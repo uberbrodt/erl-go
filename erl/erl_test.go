@@ -170,6 +170,45 @@ func Test_Link_SendsExits(t *testing.T) {
 	assert.Equal(t, IsAlive(srv), false)
 }
 
+func Test_Link_SendsExitsWhenPanic(t *testing.T) {
+	doneChan := make(chan int)
+	runnableDone := make(chan int)
+
+	tempFun := func(ts *TestServer, self PID, inbox <-chan any) error {
+		time.Sleep(chronos.Dur("3s"))
+		t.Log("Finished runnable")
+		runnableDone <- 1
+		panic("my error")
+		// return nil
+	}
+
+	srvFn := func(ts *TestServer, self PID, inbox <-chan any) error {
+		for {
+			select {
+			case _, ok := <-inbox:
+				if !ok {
+					doneChan <- 1
+					return nil
+
+				}
+			case <-time.After(chronos.Dur("10s")):
+				doneChan <- 1
+
+			}
+		}
+	}
+
+	srv := Spawn(&TestServer{t: t, exec: srvFn, done: doneChan})
+
+	task := SpawnLink(srv, &TestServer{t: t, exec: tempFun})
+
+	<-runnableDone
+	<-doneChan
+
+	assert.Equal(t, IsAlive(task), false)
+	assert.Equal(t, IsAlive(srv), false)
+}
+
 func Test_Unlink_RemovesLink(t *testing.T) {
 	doneChan := make(chan int)
 	runnableDone := make(chan int)

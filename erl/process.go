@@ -1,7 +1,8 @@
 package erl
 
 import (
-	"github.com/rs/zerolog/log"
+	"fmt"
+
 	"golang.org/x/exp/slices"
 
 	"github.com/uberbrodt/fungo/fun"
@@ -27,8 +28,25 @@ type Process struct {
 
 func (p *Process) run() {
 	go func() {
-		result := p.runnable.Receive(PID{p: p}, p.runnableReceive)
-		log.Debug().Err(result).Msg("Process runnable exited")
+		var result error
+		defer func() {
+			if r := recover(); r != nil {
+				e, ok := r.(error)
+				if ok {
+					result = fmt.Errorf("Runnable.Receive panicked: %w", e)
+				} else {
+					result = fmt.Errorf("Runnable.Receive panicked: %s", r)
+				}
+				Logger.Println(result)
+				p.done <- result
+			}
+		}()
+		result = p.runnable.Receive(PID{p: p}, p.runnableReceive)
+		if result != nil {
+			Logger.Printf("process runnable exited with error: %s\r", result)
+		} else {
+			debugPrintf("process runnable exited\r")
+		}
 		p.done <- result
 	}()
 	for {
@@ -40,7 +58,7 @@ func (p *Process) run() {
 				return
 
 			case signal := <-p.receive:
-				log.Debug().Msgf("Process received %s signal", signal.SignalName())
+				debugPrintf("Process received %s signal\r", signal.SignalName())
 				switch sig := signal.(type) {
 				case monitorSignal:
 					if sig.monitor == p.self() {
@@ -69,7 +87,7 @@ func (p *Process) run() {
 					if idx != -1 {
 						p.links = slices.Delete(p.links, idx, idx+1)
 					} else {
-						log.Debug().Msgf("received an unlink signal for %+v, but one could not be found", sig.pid)
+						Logger.Printf("received an unlink signal for %+v, but one could not be found\r", sig.pid)
 					}
 
 				case messageSignal:
@@ -78,7 +96,7 @@ func (p *Process) run() {
 
 					_, ok := p.monitoring[sig.Ref]
 					if !ok {
-						log.Warn().Msgf("Got a DOWN signal but could not match Ref %+v", sig)
+						Logger.Printf("Got a DOWN signal but could not match Ref %+v\r", sig)
 						break
 					}
 					p.runnableReceive <- DownMsg(sig)
