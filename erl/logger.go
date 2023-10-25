@@ -3,6 +3,7 @@ package erl
 import (
 	"log"
 	"os"
+	"sync"
 )
 
 type ILogger interface {
@@ -10,18 +11,33 @@ type ILogger interface {
 	Printf(format string, v ...any)
 }
 
-var Logger ILogger = log.New(os.Stdout, "erl-go", log.Ldate|log.Ltime)
+var Logger ILogger = log.New(os.Stdout, "erl-go", log.Ldate|log.Ltime|log.Lmicroseconds)
 
-var DebugLog = false
+var debugLog = false
 
-func debugPrintln(v ...any) {
-	if DebugLog {
+var debugLogMutex sync.RWMutex
+
+func DebugLogEnabled() bool {
+	defer debugLogMutex.RUnlock()
+	debugLogMutex.RLock()
+	return debugLog
+}
+
+func SetDebugLog(v bool) {
+	defer debugLogMutex.Unlock()
+	debugLogMutex.Lock()
+
+	debugLog = v
+}
+
+func DebugPrintln(v ...any) {
+	if DebugLogEnabled() {
 		Logger.Println(v...)
 	}
 }
 
-func debugPrintf(format string, v ...any) {
-	if DebugLog {
+func DebugPrintf(format string, v ...any) {
+	if DebugLogEnabled() {
 		Logger.Printf(format, v...)
 	}
 }

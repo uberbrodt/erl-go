@@ -1,3 +1,5 @@
+//go:build !integration
+
 package erl
 
 import (
@@ -9,7 +11,7 @@ import (
 	"gotest.tools/v3/assert"
 
 	"github.com/uberbrodt/erl-go/chronos"
-	"github.com/uberbrodt/erl-go/erl/tuple"
+	"github.com/uberbrodt/erl-go/erl/exitreason"
 )
 
 func TestBiDirectionalChannels(t *testing.T) {
@@ -52,7 +54,7 @@ func Test_ProcessSpawn(t *testing.T) {
 	wg.Add(1)
 
 	p := Spawn(tr)
-	sendSignal(p, NewMsg(tuple.New(&wg, "foo")))
+	sendSignal(p, NewMsg(testRunnableSyncArg{wg: &wg, actual: "foo"}))
 
 	wg.Wait()
 }
@@ -67,9 +69,9 @@ func Test_Monitors_SendsDown(t *testing.T) {
 		}()
 		t.Logf("got message in server: %+v", msg)
 		// assert.Equal(t, msg.Type, DownMsg)
-		down := msg.(downSignal)
+		down := msg.(DownMsg)
 		assert.Equal(t, down.Ref, ref)
-		assert.Equal(t, down.Reason, nil)
+		assert.Assert(t, exitreason.IsNormal(down.Reason))
 		d <- 0
 	}
 
@@ -77,7 +79,7 @@ func Test_Monitors_SendsDown(t *testing.T) {
 		time.Sleep(chronos.Dur("3s"))
 		runDone <- 0
 		t.Log("Finished runnable")
-		return nil
+		return exitreason.Normal
 	}
 
 	self := Spawn(&TestSimpleServer{t: t, exec: fn, timeout: chronos.Dur("10s"), done: doneChan})
@@ -99,7 +101,7 @@ func Test_Demonitor_PreventsDownSignal(t *testing.T) {
 		time.Sleep(chronos.Dur("1s"))
 		t.Log("Finished runnable")
 		runnableDone <- 0
-		return nil
+		return exitreason.Normal
 	}
 
 	r2 := func(ts *TestServer, self PID, inbox <-chan any) error {
@@ -110,7 +112,7 @@ func Test_Demonitor_PreventsDownSignal(t *testing.T) {
 				case downSignal:
 					t.Errorf("server receieved a down signal, %+v", msg)
 					doneChan <- 1
-					return fmt.Errorf("server receieved a down signal")
+					return exitreason.Exception(fmt.Errorf("server receieved a down signal"))
 				}
 
 			case <-time.After(chronos.Dur("5s")):
@@ -140,7 +142,7 @@ func Test_Link_SendsExits(t *testing.T) {
 		time.Sleep(chronos.Dur("3s"))
 		t.Log("Finished runnable")
 		runnableDone <- 1
-		return nil
+		return exitreason.Shutdown("foo")
 	}
 
 	srvFn := func(ts *TestServer, self PID, inbox <-chan any) error {
@@ -149,7 +151,7 @@ func Test_Link_SendsExits(t *testing.T) {
 			case _, ok := <-inbox:
 				if !ok {
 					doneChan <- 1
-					return nil
+					return exitreason.Normal
 
 				}
 			case <-time.After(chronos.Dur("10s")):
@@ -188,7 +190,7 @@ func Test_Link_SendsExitsWhenPanic(t *testing.T) {
 			case _, ok := <-inbox:
 				if !ok {
 					doneChan <- 1
-					return nil
+					return exitreason.Normal
 
 				}
 			case <-time.After(chronos.Dur("10s")):
@@ -218,7 +220,7 @@ func Test_Unlink_RemovesLink(t *testing.T) {
 		time.Sleep(chronos.Dur("1s"))
 		t.Log("Finished runnable")
 		runnableDone <- 0
-		return nil
+		return exitreason.Normal
 	}
 
 	r2 := func(ts *TestServer, self PID, inbox <-chan any) error {
@@ -227,7 +229,7 @@ func Test_Unlink_RemovesLink(t *testing.T) {
 		for range inbox {
 			time.Sleep(chronos.Dur("1s"))
 		}
-		return nil
+		return exitreason.Normal
 	}
 
 	srv := Spawn(&TestServer{t: t, exec: r2})
