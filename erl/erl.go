@@ -21,7 +21,12 @@ This all works, but the API here may change as we expand into OTP behaviours.
 package erl
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/rs/xid"
+
+	"github.com/uberbrodt/erl-go/erl/exitreason"
 )
 
 type processStatus string
@@ -38,6 +43,60 @@ var (
 // future
 type PID struct {
 	p *Process
+}
+
+var UndefinedPID PID = PID{}
+
+func (pid PID) String() string {
+	if pid.p != nil {
+		if pid.p.getName() == "" {
+			return fmt.Sprintf("PID<%d>", pid.p.id)
+		} else {
+			return fmt.Sprintf("PID<%d|%s>", pid.p.id, pid.p.getName())
+		}
+	} else {
+		return "PID<undefined>"
+	}
+}
+
+func (pid PID) IsNil() bool {
+	return pid.p == nil
+}
+
+func (self PID) Equals(pid PID) bool {
+	if self.IsNil() && pid.IsNil() {
+		return true
+	}
+
+	if self.IsNil() || pid.IsNil() {
+		return false
+	}
+
+	return self.p.id == pid.p.id
+}
+
+// TODO: might want to return an error if p.status != running?
+func (p PID) ResolvePID() (PID, error) {
+	return p, nil
+}
+
+type PIDIface interface {
+	isPID() bool
+	isRootPID() bool
+}
+
+type Name string
+
+func (n Name) ResolvePID() (PID, error) {
+	pid, exists := WhereIs(n)
+	if !exists {
+		return pid, fmt.Errorf("no PID found for name %s", n)
+	}
+	return pid, nil
+}
+
+type Dest interface {
+	ResolvePID() (PID, error)
 }
 
 // A Link is a bi-directional relationship between two processes. Once established,
@@ -104,13 +163,21 @@ func NewMsg(body any) Signal {
 // Sends the [term] to the process identified by [pid]. Will not error
 // if process does not exist and will not block the caller.
 func Send(pid PID, term any) {
-	if pid.p.status == running {
-		pid.p.receive <- messageSignal{term: term}
+	sendSignal(pid, messageSignal{term: term})
+}
+
+func SendAfter(pid PID, term any, tout time.Duration) {
+	if pid != UndefinedPID && pid.p.getStatus() == running {
+		t := &timer{to: pid, term: term, tout: tout}
+
+		Spawn(t)
 	}
 }
 
 func sendSignal(pid PID, signal Signal) {
-	pid.p.receive <- signal
+	if pid != UndefinedPID && !pid.IsNil() {
+		pid.p.send(signal)
+	}
 }
 
 // Returns an opqaue "unique" identifier. Not crypto unique.
@@ -120,15 +187,29 @@ func MakeRef() Ref {
 	return Ref(xid.New().String())
 }
 
+var UndefinedRef Ref = Ref("")
+
 // Returns true if the process is running
 func IsAlive(pid PID) bool {
-	return pid.p != nil && pid.p.status == running
+	return !pid.IsNil() && pid.p.getStatus() == running
 }
 
 func ProcessFlag(self PID, flag ProcFlag, value any) {
+	if self.IsNil() {
+		panic("pid cannot be nil")
+	}
 	if flag == TrapExit {
 		v := value.(bool)
 
 		self.p.trapExits = v
 	}
+}
+
+func Exit(self PID, pid PID, reason *exitreason.S) {
+	if self.IsNil() || pid.IsNil() {
+		panic("Exit: pids cannot be nil")
+	}
+	es := exitSignal{sender: self, receiver: pid, reason: reason}
+
+	pid.p.send(es)
 }

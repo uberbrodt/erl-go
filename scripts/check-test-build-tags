@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+
+
+find . -name '*_test.go' \! -name 'testutil*_test.go' \! -name 'main*_test.go' > check_test_build_tags_temp.txt
+
+while read -r testf; do
+    first_line="$(head -1 "$testf")"
+    if [[ "$first_line" =~ ^//go:build.*integration ]]; then
+        if [[ -n "$DEBUG_LOG" ]]; then
+            echo "passed: $testf - $first_line"
+        fi
+
+    else
+        echo "FAILED: $testf - $first_line"
+        cat <<- "EOF"
+All test files need to have a proper build tag as the first line
+See project README for info on exceptions
+EOF
+        exit 1
+    fi
+done < check_test_build_tags_temp.txt
+
+rm check_test_build_tags_temp.txt

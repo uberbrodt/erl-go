@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+if [[ -z $(gofumpt -l .) ]]; then
+    echo "all files formatted correctly"
+    exit 0
+else
+
+    cat <<- "EOF"
+Some files were not formatted correctly; fix by running `make format`
+EOF
+exit 1
+fi

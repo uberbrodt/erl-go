@@ -7,7 +7,8 @@ import (
 
 	"gotest.tools/v3/assert"
 
-	"github.com/uberbrodt/erl-go/erl/tuple"
+	"github.com/uberbrodt/erl-go/chronos"
+	"github.com/uberbrodt/erl-go/erl/exitreason"
 )
 
 type TestRunnable struct {
@@ -15,17 +16,32 @@ type TestRunnable struct {
 	expected string
 }
 
-func (tr *TestRunnable) Receive(self PID, incoming <-chan any) error {
-	tr.t.Logf("TestRunnable waiting for incoming message")
-	m := <-incoming
-	tr.t.Logf("TestRunnable received message %+v", m)
+type testRunnableSyncArg struct {
+	wg     *sync.WaitGroup
+	actual string
+}
 
-	tup, _ := m.(tuple.Tuple)
-	wg, actual := tuple.Two[*sync.WaitGroup, string](tup)
+func (tr *TestRunnable) Receive(self PID, inbox <-chan any) error {
+	// tr.t.Logf("TestRunnable waiting for incoming message")
+	for {
+		select {
+		case m, ok := <-inbox:
+			if !ok {
+				return exitreason.Normal
+			}
+			switch msg := m.(type) {
+			case testRunnableSyncArg:
+				assert.Equal(tr.t, msg.actual, tr.expected)
+				msg.wg.Done()
+				return exitreason.Normal
 
-	assert.Equal(tr.t, actual, tr.expected)
-	wg.Done()
-	return nil
+			default:
+				tr.t.Logf("Got unhandled message in TestRunnable")
+			}
+		case <-time.After(chronos.Dur("5s")):
+			return exitreason.Timeout
+		}
+	}
 }
 
 type TestSimpleRunnable struct {
@@ -67,4 +83,14 @@ type TestServer struct {
 
 func (ts *TestServer) Receive(self PID, inbox <-chan any) error {
 	return ts.exec(ts, self, inbox)
+}
+
+func testSpawn(t *testing.T, runnable Runnable) PID {
+	pid := Spawn(runnable)
+	t.Cleanup(func() {
+		if IsAlive(pid) {
+			Exit(rootPID, pid, exitreason.Kill)
+		}
+	})
+	return pid
 }

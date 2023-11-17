@@ -1,13 +1,17 @@
 package erl
 
+import "github.com/uberbrodt/erl-go/erl/exitreason"
+
 type Signal interface {
 	SignalName() string
 }
 
 type exitSignal struct {
-	proc   PID
-	reason error
-	link   bool
+	// PID of the process that sent the exit
+	sender   PID
+	receiver PID
+	reason   *exitreason.S
+	link     bool
 }
 
 func (s exitSignal) SignalName() string {
@@ -18,9 +22,9 @@ func (s exitSignal) SignalName() string {
 // Will be forwarded to the Runable if a matching Ref is found, and discarded with
 // a Warning log otherwise.
 type downSignal struct {
-	Proc   PID
-	Ref    Ref
-	Reason error
+	proc   PID
+	ref    Ref
+	reason *exitreason.S
 }
 
 func (s downSignal) SignalName() string {
