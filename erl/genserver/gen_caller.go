@@ -26,8 +26,12 @@ func (gc *genCaller) Receive(self erl.PID, inbox <-chan any) error {
 
 	for {
 		select {
-		case msg := <-inbox:
+		case msg, ok := <-inbox:
+			if !ok {
+				return nil
+			}
 			switch msgT := msg.(type) {
+
 			case callReply:
 				gc.out <- msgT
 				return exitreason.Normal

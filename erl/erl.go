@@ -205,12 +205,6 @@ func ProcessFlag(self PID, flag ProcFlag, value any) {
 	}
 }
 
-// type ExitOpt func(sig exitSignal) exitSignal
-//
-// func Sender(sig exitSignal) exitSignal {
-// 	sig.proc =
-// }
-
 func Exit(self PID, pid PID, reason *exitreason.S) {
 	if self.IsNil() || pid.IsNil() {
 		panic("Exit: pids cannot be nil")

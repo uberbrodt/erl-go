@@ -38,7 +38,6 @@ func StartLink(self erl.PID, callback Supervisor, args any, optFuns ...LinkOpts)
 	}
 
 	sup := SupervisorS{
-		// store args here too, jic.
 		callback: callback,
 	}
 

@@ -260,27 +260,19 @@ func (s SupervisorS) terminateChild(self erl.PID, c ChildSpec) (ChildSpec, bool)
 
 func (s SupervisorS) startChildren(self erl.PID, children *childSpecs) error {
 	for _, childSpec := range children.list() {
-
-		childPID, err := childSpec.Start(self)
-
-		switch {
-		case err == nil:
-			childSpec.pid = childPID
-			children.update(childSpec)
-
-		case errors.Is(err, exitreason.Ignore):
-			erl.DebugPrintf("child returned :ignore exitreason")
-			childSpec.ignored = true
-			children.update(childSpec)
-			erl.DebugPrintf("added childSpec with undefinedPID")
-		default:
+		child, err := s.startChild(self, childSpec)
+		if err != nil {
 			// err wasn't nil or ignore, so rollup everything we've already started and return the error
 			// we encountered
 			erl.DebugPrintf("Supervisor[%v]: child returned an error: %v", self, err)
 			// ignoring return here since we're stopping
 			s.stopChildren(self, children.reverse())
 			return err
+
 		}
+
+		children.update(child)
+
 	}
 	return nil
 }

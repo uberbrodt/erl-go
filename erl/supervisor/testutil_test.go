@@ -23,14 +23,11 @@ type TestSrvState struct {
 }
 
 func testStartSupervisor(t *testing.T, sup Supervisor, args any) (erl.PID, error) {
-	// pid, err := StartLink(erl.RootPID(), sup, nil)
-	// pid, err := StartLink(erl.RootPID(), sup, args, SetName(erl.Name("test-supervisor")))
 	pid, err := StartLink(erl.RootPID(), sup, args, SetName(supName))
 
 	t.Cleanup(func() {
 		t.Logf("Cleanup func stopping test supervisor: %v", pid)
 		genserver.Stop(erl.RootPID(), pid, genserver.StopReason(exitreason.SupervisorShutdown))
-		// erl.Exit(erl.RootPID(), pid, exitreason.Kill)
 	})
 	return pid, err
 }

@@ -8,7 +8,6 @@ type Signal interface {
 
 type exitSignal struct {
 	// PID of the process that sent the exit
-	// proc     PID
 	sender   PID
 	receiver PID
 	reason   *exitreason.S

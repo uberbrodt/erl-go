@@ -49,7 +49,7 @@ func (s MyServer) HandleContinue(self erl.PID, continuation any, state MyServerS
 	switch continuation.(type) {
 	case startPort:
 		log.Printf("starting port")
-		state.portPID = port.Open(self, "./testport.sh")
+		state.portPID = port.Open(self, "./examples/ports/testport.sh")
 		erl.SendAfter(self, closePort{}, chronos.Dur("10s"))
 	}
 	return state, nil
