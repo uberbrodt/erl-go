@@ -11,6 +11,7 @@ import (
 	"io"
 	"log"
 	"os/exec"
+	"syscall"
 
 	"github.com/uberbrodt/erl-go/erl"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
@@ -51,6 +52,11 @@ func (p *Port) Receive(self erl.PID, inbox <-chan any) error {
 	erl.ProcessFlag(self, erl.TrapExit, true)
 	erl.Link(p.parent, self)
 	p.cmd = exec.Command(p.cmdArg, p.args...)
+	// Doing this will set the Process Group ID (PGID) of the process
+	// to the same as the process. We can then use "-PID" in syscall
+	// to kill the entire process group. This prevents zombie processes
+	// in the event that our cmd process has children.
+	p.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	var initErr error
 
 	p.stdin, initErr = p.cmd.StdinPipe()
@@ -103,8 +109,10 @@ func (p *Port) Receive(self erl.PID, inbox <-chan any) error {
 		switch msg := anymsg.(type) {
 		case erl.ExitMsg:
 			if msg.Proc.Equals(p.parent) {
+				// Good little UNIX processes will exit when stdin is closed
 				p.stdin.Close()
-				p.cmd.Process.Kill()
+				// For the bad ones, we drop the hammer
+				syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
 				return exitreason.Shutdown("Port exited because the parent process exited")
 			}
 		case closePort:
