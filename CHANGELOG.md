@@ -8,8 +8,13 @@
 
 - Fix a bug with Supervisor where the ChildKiller process would get stuck in a
   loop because it did not handle the inbox closure.
+
 - Application was not shutting down it's supervision tree when Stop() was called.
   We now wait 60s for this to happen before returning.
+
+- Port was sending exitreason.Normal if the external process exited, which will
+  not send an ExitMsg to linked processes that are not trapping exits. Changed
+  to Shutdown and added ShutdownReason constants
 
 ## [0.5.0] 2023-11-17
 

@@ -17,6 +17,13 @@ import (
 	"github.com/uberbrodt/erl-go/erl/exitreason"
 )
 
+type ShutdownReason string
+
+const (
+	PortExitedReason = "port exited"
+	PortClosedReason = "port closed"
+)
+
 func Open(self erl.PID, cmd string, args ...string) erl.PID {
 	p := &Port{cmdArg: cmd, args: args, parent: self}
 	return erl.Spawn(p)
@@ -120,10 +127,10 @@ func (p *Port) Receive(self erl.PID, inbox <-chan any) error {
 			p.stdin.Close()
 			p.cmd.Process.Kill()
 			erl.Send(msg.sender, PortClosed{Port: self})
-			return exitreason.Shutdown("port closed")
+			return exitreason.Shutdown(PortClosedReason)
 		case portExited:
 			if msg.err == nil {
-				return exitreason.Normal
+				return exitreason.Shutdown(PortExitedReason)
 			} else {
 				return exitreason.Exception(msg.err)
 			}
