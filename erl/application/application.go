@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/uberbrodt/erl-go/chronos"
 	"github.com/uberbrodt/erl-go/erl"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
+	"github.com/uberbrodt/erl-go/erl/genserver"
 )
 
 type Application interface {
@@ -37,9 +39,13 @@ type App struct {
 // stops the app, sending [exitreason.SupervisorShutdown] to itself to all its children, calls the Application.Stop() method on the app.
 func (ap *App) Stop() error {
 	// TODO: log something about the app being asked to stop
+	erl.Logger.Println("Application asked to stop")
 	ap.stopped = true
 	stop := ap.app.Stop()
-	erl.Exit(erl.RootPID(), ap.self, exitreason.SupervisorShutdown)
+	erl.Logger.Println("Application shutting down supervision tree...")
+	// NOTE: the application process isn't a GenServer (currently) but [genserver.Stop] will provide a synchronous stop
+	genserver.Stop(erl.RootPID(), ap.self, genserver.StopReason(exitreason.SupervisorShutdown), genserver.StopTimeout(chronos.Dur("60s")))
+	erl.Logger.Println("Done")
 	return stop
 }
 
@@ -65,12 +71,12 @@ func (ap *App) Receive(self erl.PID, inbox <-chan any) error {
 	for x := range inbox {
 		switch msg := x.(type) {
 		case erl.ExitMsg:
-
 			if msg.Proc == supPID {
 				erl.Logger.Println("App got exitmsg from the root supervisor")
 				ap.cancel()
-				// ap.notify <- msg.Reason
 				return exitreason.Normal
+			} else if msg.Proc == erl.RootPID() {
+				genserver.Stop(self, supPID, genserver.StopReason(exitreason.SupervisorShutdown))
 			}
 		default:
 			erl.DebugPrintf("Application got message that wasn't an exit: %+v", msg)
