@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+
+sed -i '/.*\/test_.*\.go.*/d' ./cover.out
