@@ -79,7 +79,10 @@ func (ck *childKiller) handleTimeout(self erl.PID, inbox <-chan any) {
 	erl.Exit(ck.parentPID, ck.child.pid, exitreason.SupervisorShutdown)
 	for {
 		select {
-		case anyMsg := <-inbox:
+		case anyMsg, ok := <-inbox:
+			if !ok {
+				return
+			}
 			switch msg := anyMsg.(type) {
 			case erl.DownMsg:
 				ck.handleDown(self, msg)
