@@ -110,6 +110,7 @@ func (p *Port) Receive(self erl.PID, inbox <-chan any) error {
 		case erl.ExitMsg:
 			if msg.Proc.Equals(p.parent) {
 				// Good little UNIX processes will exit when stdin is closed
+				erl.DebugPrintf("port %v received ExitMsg from parent, killing external process", self)
 				p.stdin.Close()
 				// For the bad ones, we drop the hammer
 				syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
