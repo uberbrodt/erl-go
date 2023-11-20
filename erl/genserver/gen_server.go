@@ -141,6 +141,7 @@ func (gs *GenServerS[STATE]) Receive(self erl.PID, inbox <-chan any) error {
 				gs.callback.Terminate(self, msgT.Reason, gs.state)
 				return msgT.Reason
 			} else {
+				erl.DebugPrintf("GenServer[%v] ExitMsg is NOT from parent link, sending to HandleInfo callback", self)
 				err := gs.handleInfoRequest(self, msg)
 				if err != nil {
 					return err

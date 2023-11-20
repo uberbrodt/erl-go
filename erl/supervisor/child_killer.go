@@ -22,6 +22,7 @@ type childKiller struct {
 }
 
 func (ck *childKiller) Receive(self erl.PID, inbox <-chan any) error {
+	erl.DebugPrintf("Supervisor %v is terminating %+v", ck.parentPID, ck.child)
 	ck.monitorRef = erl.Monitor(self, ck.child.pid)
 	// unlink the supervisor so it doesn't get an ExitMsg
 	erl.Unlink(ck.parentPID, ck.child.pid)
@@ -79,7 +80,10 @@ func (ck *childKiller) handleTimeout(self erl.PID, inbox <-chan any) {
 	erl.Exit(ck.parentPID, ck.child.pid, exitreason.SupervisorShutdown)
 	for {
 		select {
-		case anyMsg := <-inbox:
+		case anyMsg, ok := <-inbox:
+			if !ok {
+				return
+			}
 			switch msg := anyMsg.(type) {
 			case erl.DownMsg:
 				ck.handleDown(self, msg)

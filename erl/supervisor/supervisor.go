@@ -112,7 +112,7 @@ func (s SupervisorS) HandleCall(self erl.PID, request any, from genserver.From, 
 func (s SupervisorS) HandleInfo(self erl.PID, request any, state supervisorState) (genserver.InfoResult[supervisorState], error) {
 	switch msg := request.(type) {
 	case erl.ExitMsg:
-		erl.Logger.Printf("%v got exit msg: %+v", self, msg)
+		erl.Logger.Printf("GenServer %v got exit msg: %+v", self, msg)
 		return s.restartChild(self, msg, state)
 	default:
 		erl.Logger.Printf("%v got unknown msg: %+v", self, msg)

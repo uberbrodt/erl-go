@@ -160,7 +160,7 @@ func (p *Process) run() {
 
 					// if we're trapping exits, send the signal to the runnable for them to deal with, don't exit.
 					if p.trapExits {
-						DebugPrintf("%v Trapped exit signal %+v", p.self(), sig)
+						DebugPrintf("%+v Trapped exit signal from %+v", p.self(), sig.sender)
 						p.runnableReceive <- exitMsgFromSignal(sig)
 						DebugPrintf("%v sent exitMsg", p.self())
 					} else {
