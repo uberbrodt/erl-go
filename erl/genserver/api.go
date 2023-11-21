@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/uberbrodt/erl-go/chronos"
 	"github.com/uberbrodt/erl-go/erl"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
 	"github.com/uberbrodt/erl-go/erl/timeout"
@@ -171,24 +170,6 @@ type callReply struct {
 	Term   any
 }
 
-type genSrvOpts struct {
-	name         erl.Name
-	startTimeout time.Duration
-}
-
-type StartOpt func(opts genSrvOpts) genSrvOpts
-
-func defaultGenSrvOpts() genSrvOpts {
-	return genSrvOpts{startTimeout: chronos.Dur("5s")}
-}
-
-func SetName(name erl.Name) StartOpt {
-	return func(opts genSrvOpts) genSrvOpts {
-		opts.name = name
-		return opts
-	}
-}
-
 type startRet struct {
 	pid    erl.PID
 	monref erl.Ref
@@ -256,7 +237,7 @@ func doStart[STATE any](self erl.PID, start startType, callbackStruct GenServer[
 		}
 		return startRet{pid: pid, err: ack.err, monref: monref}
 
-	case <-time.After(finalOpts.startTimeout):
+	case <-time.After(finalOpts.GetStartTimeout()):
 		erl.Exit(self, pid, exitreason.Kill)
 		return startRet{pid: pid, err: exitreason.Timeout, monref: monref}
 	}

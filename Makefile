@@ -37,6 +37,7 @@ build:
 #################################################################################
 test: check-tools
 	gotestsum -f testname -- -timeout 60s -race -coverprofile cover.out $(TEST_ARG)
+	./scripts/rm-test-fw-from-coverprofile
 
 #################################################################################
 #@ test-integration: runs all integration tests.

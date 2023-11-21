@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [0.6.0] 2023-11-21
+
+### Changed
+
+- Changed the way we count test coverage to remove the testing helpers.
+
+### Added
+
+- `recurringtask` package supports starting a process that will execute every
+  `Interval`. This is a common use case for GenServers, and cuts down on the
+  amount of boilerplate needed.
+
+- `genserver.InheritOpts` allows passing in a struct that matches an interface,
+  which makes building abstractions on top `GenServer` easier.
+
 ## [0.5.1] 2023-11-20
 
 ### Fixed
