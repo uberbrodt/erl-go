@@ -23,6 +23,11 @@ func Start(app Application, args any, cancel context.CancelFunc) *App {
 	selfPID := erl.Spawn(ap)
 	ap.self = selfPID
 
+	result := <-wait
+	if result != nil {
+		panic(result)
+	}
+
 	return ap
 }
 
@@ -68,6 +73,8 @@ func (ap *App) Receive(self erl.PID, inbox <-chan any) error {
 		ap.notify <- startErr
 		return startErr
 	}
+	close(ap.notify)
+
 	for x := range inbox {
 		switch msg := x.(type) {
 		case erl.ExitMsg:

@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.6.1] 2023-11-21
+
+### Fixed
+
+- The application would hang if the root supervisor failed to start. Someone
+  should really write some tests for that package.
+
 ## [0.6.0] 2023-11-21
 
 ### Changed
