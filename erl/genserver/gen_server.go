@@ -64,7 +64,7 @@ type GenServer[STATE any] interface {
 type GenServerS[STATE any] struct {
 	callback       GenServer[STATE]
 	state          STATE
-	opts           genSrvOpts
+	opts           StartOpts
 	args           any
 	parent         erl.PID
 	initAckChan    chan<- initAck
@@ -73,14 +73,14 @@ type GenServerS[STATE any] struct {
 
 func (gs *GenServerS[STATE]) unregisterName() {
 	if gs.nameRegistered {
-		erl.Unregister(gs.opts.name)
+		erl.Unregister(gs.opts.GetName())
 	}
 }
 
 func (gs *GenServerS[STATE]) Receive(self erl.PID, inbox <-chan any) error {
 	// register if name is set
-	if gs.opts.name != "" {
-		if err := erl.Register(gs.opts.name, self); err != nil {
+	if gs.opts.GetName() != "" {
+		if err := erl.Register(gs.opts.GetName(), self); err != nil {
 			gs.initAckChan <- initAck{err: err}
 			return err
 		}
