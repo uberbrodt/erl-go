@@ -38,7 +38,6 @@ func testInitFun(self erl.PID, args testTaskArgs) (testState, error) {
 }
 
 func TestStartLink_Success(t *testing.T) {
-	erl.SetDebugLog(true)
 	trPID, tr := erl.NewTestReceiver(t)
 	pid, err := StartLink(trPID, testTaskFun, testInitFun, testTaskArgs{t: t, trPID: trPID}, SetInterval(chronos.Dur("1s")))
 

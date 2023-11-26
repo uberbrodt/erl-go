@@ -191,7 +191,6 @@ func TestStartLink_ReturnsExceptionIfDuplicateChildIDs(t *testing.T) {
 }
 
 func TestSupervisorS_RestartsChildrenWithPermanentStrategy(t *testing.T) {
-	erl.SetDebugLog(true)
 	trPID, tr := erl.NewTestReceiver(t)
 	sup := TestSup{
 		supFlags: NewSupFlags(),
