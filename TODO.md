@@ -14,8 +14,9 @@
 - [x] Rewrite Genserver Call tests to execute more quickly
 - [x] Rewrite Supervisor tests to execute more quickly
 - [ ] test Exit, ensure that kill, normal reasons do correct behavior
-- [ ] Add tests for App - maybe convert to GenServer?
+- [x] Add tests for App - maybe convert to GenServer?
 - [ ] ChildSpec.Type seems superfluous; adding `supervisor.NewSupChildSpec`
       would accomplish the same thing (making the default shutdown `Infinity`)
 - [ ] support new slog for erl logger
 - [ ] support custom crash reporter.
+- [x] make sure recurringtask handles panics in the initFun and taskFun

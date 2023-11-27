@@ -44,7 +44,7 @@ func (s *rtSrv[S, A]) Init(self erl.PID, args any) (genserver.InitResult[rtState
 }
 
 func (s *rtSrv[S, A]) HandleCall(self erl.PID, request any, from genserver.From, state rtState[S, A]) (genserver.CallResult[rtState[S, A]], error) {
-	return genserver.CallResult[rtState[S, A]]{Msg: "idk", State: state}, nil
+	return genserver.CallResult[rtState[S, A]]{Msg: "unsupported", State: state}, nil
 }
 
 func (s *rtSrv[S, A]) HandleCast(self erl.PID, anymsg any, state rtState[S, A]) (genserver.CastResult[rtState[S, A]], error) {
@@ -67,7 +67,7 @@ func (s *rtSrv[S, A]) HandleInfo(self erl.PID, anymsg any, state rtState[S, A]) 
 
 		return genserver.InfoResult[rtState[S, A]]{State: state}, err
 	default:
-		erl.DebugPrintf("got unhandeled message: %+v", msg)
+		erl.DebugPrintf("got unhandled message: %+v", msg)
 		return genserver.InfoResult[rtState[S, A]]{State: state}, nil
 	}
 }
