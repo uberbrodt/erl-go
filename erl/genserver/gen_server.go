@@ -2,6 +2,7 @@ package genserver
 
 import (
 	"errors"
+	"fmt"
 	"log"
 
 	"github.com/uberbrodt/erl-go/erl"
@@ -86,7 +87,8 @@ func (gs *GenServerS[STATE]) Receive(self erl.PID, inbox <-chan any) error {
 		}
 		gs.nameRegistered = true
 	}
-	initReturn, err := gs.callback.Init(self, gs.args)
+	// initReturn, err := gs.callback.Init(self, gs.args)
+	initReturn, err := gs.handleInit(self, gs.args)
 	if err != nil {
 		if errors.Is(err, exitreason.Ignore) {
 			gs.unregisterName()
@@ -154,6 +156,26 @@ func (gs *GenServerS[STATE]) Receive(self erl.PID, inbox <-chan any) error {
 			}
 		}
 	}
+}
+
+func (gs *GenServerS[STATE]) handleInit(self erl.PID, msg any) (result InitResult[STATE], err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			e, ok := r.(error)
+			if !ok {
+				err = exitreason.Exception(fmt.Errorf("panic in init: %v", r))
+			} else {
+				if !exitreason.IsException(e) {
+					err = exitreason.Exception(e)
+				} else {
+					err = e
+				}
+			}
+
+		}
+	}()
+	result, err = gs.callback.Init(self, gs.args)
+	return
 }
 
 func (gs *GenServerS[STATE]) handleInfoRequest(self erl.PID, msg any) error {
