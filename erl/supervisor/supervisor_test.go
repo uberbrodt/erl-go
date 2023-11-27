@@ -165,6 +165,34 @@ func TestStartLink_ReturnsExceptionIfAnyChildErrors(t *testing.T) {
 	assert.Assert(t, !erl.IsAlive(child2PID))
 }
 
+func TestStartLink_ReturnsExceptionIfStartFunPanics(t *testing.T) {
+	sup := TestSup{
+		supFlags: NewSupFlags(),
+		childSpecs: []ChildSpec{
+			NewChildSpec("child1",
+				testSrvStartFun[TestSrvState](supChild1, nil)),
+			NewChildSpec("child2", func(sup erl.PID) (erl.PID, error) {
+				panic("uh-oh")
+			}),
+		},
+	}
+	pid, err := testStartSupervisor(t, sup, nil)
+	erl.Logger.Printf("Supervisor PID: %v", pid)
+	erl.Logger.Printf("Supervisor Error: %v", err)
+
+	assert.Assert(t, exitreason.IsException(err))
+	assert.ErrorContains(t, err, "uh-oh")
+	assert.Assert(t, !erl.IsAlive(pid))
+
+	child1PID, child1Exists := erl.WhereIs(supChild1)
+	assert.Assert(t, !child1Exists)
+	assert.Assert(t, !erl.IsAlive(child1PID))
+
+	child2PID, child2Exists := erl.WhereIs(supChild2)
+	assert.Assert(t, !child2Exists)
+	assert.Assert(t, !erl.IsAlive(child2PID))
+}
+
 func TestStartLink_ReturnsExceptionIfDuplicateChildIDs(t *testing.T) {
 	sup := TestSup{
 		supFlags: NewSupFlags(),
