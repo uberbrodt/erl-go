@@ -20,7 +20,7 @@ type (
 )
 
 func GetCount(beanCounter erl.Dest) int {
-	result, err := genserver.Call(App.Self(), beanCounter, PrintCount{}, chronos.Dur("5s"))
+	result, err := genserver.Call(erl.RootPID(), beanCounter, PrintCount{}, chronos.Dur("5s"))
 	if err != nil {
 		panic(err)
 	}

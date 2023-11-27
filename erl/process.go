@@ -34,9 +34,10 @@ type Process struct {
 	monitoring      map[Ref]PID
 	_status         processStatus
 	exitReason      *exitreason.S
-	trapExits       bool
+	_trapExits      bool
 	statusMutex     sync.RWMutex
 	nameMutex       sync.RWMutex
+	trapMutex       sync.RWMutex
 	// the local name of the pid, optional
 	_name Name
 }
@@ -159,7 +160,7 @@ func (p *Process) run() {
 					}
 
 					// if we're trapping exits, send the signal to the runnable for them to deal with, don't exit.
-					if p.trapExits {
+					if p.trapExits() {
 						DebugPrintf("%+v Trapped exit signal from %+v", p.self(), sig.sender)
 						p.runnableReceive <- exitMsgFromSignal(sig)
 						DebugPrintf("%v sent exitMsg", p.self())
@@ -239,6 +240,19 @@ func (p *Process) send(sig Signal) {
 		// just ignore
 
 	}
+}
+
+func (p *Process) setTrapExits(v bool) {
+	defer p.trapMutex.Unlock()
+	p.trapMutex.Lock()
+
+	p._trapExits = v
+}
+
+func (p *Process) trapExits() bool {
+	defer p.trapMutex.RUnlock()
+	p.trapMutex.RLock()
+	return p._trapExits
 }
 
 func (p *Process) getStatus() processStatus {

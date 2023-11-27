@@ -188,7 +188,7 @@ func doStart[STATE any](self erl.PID, start startType, callbackStruct GenServer[
 	if self.IsNil() {
 		return startRet{err: exitreason.Exception(fmt.Errorf("self/parent pid cannot be undefined"))}
 	}
-	finalOpts := defaultGenSrvOpts()
+	finalOpts := DefaultOpts()
 
 	for _, opt := range opts {
 		finalOpts = opt(finalOpts)

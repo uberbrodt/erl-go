@@ -50,7 +50,7 @@ func InheritOpts(o StartOpts) StartOpt {
 
 type StartOpt func(opts StartOpts) StartOpts
 
-func defaultGenSrvOpts() StartOpts {
+func DefaultOpts() StartOpts {
 	return &genSrvOpts{startTimeout: chronos.Dur("5s")}
 }
 

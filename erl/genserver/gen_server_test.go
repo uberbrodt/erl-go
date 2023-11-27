@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gotest.tools/v3/assert"
+	"gotest.tools/v3/assert/cmp"
 
 	"github.com/uberbrodt/erl-go/chronos"
 	"github.com/uberbrodt/erl-go/erl"
@@ -298,7 +299,7 @@ func TestGenServer_Cast_DoesContinue(t *testing.T) {
 func TestGenServer_Cast_DoesStopOnError(t *testing.T) {
 	tr, receive := NewTestReceiver(t)
 	pid, err := startTestGS(tr, t, TestGS{terminateProbe: func(self erl.PID, exit error, state TestGS) {
-		assert.ErrorIs(t, exit, exitreason.Normal)
+		assert.Check(t, cmp.ErrorIs(exit, exitreason.Normal))
 		receive <- 1
 	}}, TestGSArgs{})
 	assert.NilError(t, err)
@@ -372,7 +373,7 @@ func TestGenServer_Info_DoesContinue(t *testing.T) {
 func TestGenServer_Info_DoesStopOnError(t *testing.T) {
 	tr, receive := NewTestReceiver(t)
 	pid, err := startTestGS(tr, t, TestGS{terminateProbe: func(self erl.PID, exit error, state TestGS) {
-		assert.ErrorIs(t, exit, exitreason.Normal)
+		assert.Check(t, cmp.ErrorIs(exit, exitreason.Normal))
 		receive <- 1
 	}}, TestGSArgs{})
 	assert.NilError(t, err)
