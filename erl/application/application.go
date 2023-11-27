@@ -1,3 +1,60 @@
+/*
+An application is a sort of root for a supervision tree. It's primary function is
+to call a [context.CancelFunc] when the children crashes exceed the restart intensity.
+
+While it does wrap a [supervisor], it is intentially not configurable. The idea is that
+that's a domain specific problem that should be handled in your app.
+
+For most apps, something like this should be in your [main]:
+
+	package main
+
+	import (
+		"context"
+
+		"github.com/uberbrodt/erl-go/erl"
+		"github.com/uberbrodt/erl-go/erl/application"
+		"github.com/uberbrodt/erl-go/erl/supervisor"
+
+	)
+
+	var App *application.App
+
+	func init() {
+		// set to true to get a lot of logs
+		erl.SetDebugLog(false)
+	}
+
+	type MyApp struct{}
+
+	 // Pass in config via the args parameter
+	func (ba *MyApp) Start(self erl.PID, args any) (erl.PID, error) {
+
+	 // start children based on config
+		children := []supervisor.ChildSpec{ }
+		return supervisor.StartDefaultLink(self, children, supervisor.NewSupFlags())
+	}
+
+	// do any cleanup here. should run unless there's a fatal error in the runtime.
+	func (ba *MyApp) Stop() error {
+		return nil
+	}
+
+	func main() {
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+		defer cancel()
+
+		 // parse flags, load a real config here.
+		 conf := make(map[string]any)
+		 App := application.Start(&MyApp{}, conf, cancel)
+
+		<-ctx.Done()
+		if !app.App.Stopped() {
+			app.App.Stop()
+		}
+
+	}
+*/
 package application
 
 import (
