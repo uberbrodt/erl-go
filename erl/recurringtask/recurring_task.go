@@ -62,32 +62,26 @@ func defaultTaskOpts() *taskOpts {
 	return &taskOpts{loopTimeout: chronos.Dur("5m")}
 }
 
-func Start[S any, A any](self erl.PID, taskFun func(self erl.PID, state S) (S, error), initFun func(self erl.PID, args A) (S, error), args A, opts ...StartOpt) (erl.PID, error) {
+func buildTask[S any, A any](self erl.PID, taskFun func(self erl.PID, state S) (S, error), initFun func(self erl.PID, args A) (S, error), args A, opts ...StartOpt) (rtConfig[S, A], *taskOpts) {
 	topts := defaultTaskOpts()
 	for _, opt := range opts {
 		topts = opt(topts)
 	}
+	return rtConfig[S, A]{taskFun: taskFun, initFun: initFun, taskArgs: args, loopTimeout: topts.loopTimeout}, topts
+}
 
-	c := rtConfig[S, A]{taskFun: taskFun, initFun: initFun, taskArgs: args, loopTimeout: topts.loopTimeout}
+func Start[S any, A any](self erl.PID, taskFun func(self erl.PID, state S) (S, error), initFun func(self erl.PID, args A) (S, error), args A, opts ...StartOpt) (erl.PID, error) {
+	c, topts := buildTask[S, A](self, taskFun, initFun, args, opts...)
 	return genserver.Start[rtState[S, A]](self, &rtSrv[S, A]{}, c, genserver.InheritOpts(topts))
 }
 
 func StartLink[S any, A any](self erl.PID, taskFun func(self erl.PID, state S) (S, error), initFun func(self erl.PID, args A) (S, error), args A, opts ...StartOpt) (erl.PID, error) {
-	topts := defaultTaskOpts()
-	for _, opt := range opts {
-		topts = opt(topts)
-	}
-
-	c := rtConfig[S, A]{taskFun: taskFun, initFun: initFun, taskArgs: args, loopTimeout: topts.loopTimeout}
+	c, topts := buildTask[S, A](self, taskFun, initFun, args, opts...)
 	return genserver.StartLink[rtState[S, A]](self, &rtSrv[S, A]{}, c, genserver.InheritOpts(topts))
 }
 
 func StartMonitor[S any, A any](self erl.PID, taskFun func(self erl.PID, state S) (S, error), initFun func(self erl.PID, args A) (S, error), args A, opts ...StartOpt) (erl.PID, erl.Ref, error) {
-	topts := defaultTaskOpts()
-	for _, opt := range opts {
-		topts = opt(topts)
-	}
-	c := rtConfig[S, A]{taskFun: taskFun, initFun: initFun, taskArgs: args, loopTimeout: topts.loopTimeout}
+	c, topts := buildTask[S, A](self, taskFun, initFun, args, opts...)
 	return genserver.StartMonitor[rtState[S, A]](self, &rtSrv[S, A]{}, c, genserver.InheritOpts(topts))
 }
 

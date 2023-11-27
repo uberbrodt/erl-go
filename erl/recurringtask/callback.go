@@ -32,7 +32,7 @@ type doTask struct{}
 func (s *rtSrv[S, A]) Init(self erl.PID, args any) (genserver.InitResult[rtState[S, A]], error) {
 	conf, ok := args.(rtConfig[S, A])
 	if !ok {
-		return genserver.InitResult[rtState[S, A]]{}, exitreason.Exception(errors.New("rtSrv Init arg must be a WatchdogConfig{}"))
+		return genserver.InitResult[rtState[S, A]]{}, exitreason.Exception(errors.New("rtSrv Init arg must be an rtConfig{}"))
 	}
 
 	state, err := conf.initFun(self, conf.taskArgs)
