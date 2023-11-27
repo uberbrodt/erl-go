@@ -68,7 +68,6 @@ func TestStartLink_InitExitExceptionStop(t *testing.T) {
 }
 
 func TestStartLink_InitIgnoreStop(t *testing.T) {
-	erl.SetDebugLog(true)
 	tr := &TestReceiver{
 		c: make(chan any, 500),
 		t: t,

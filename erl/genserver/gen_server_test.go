@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gotest.tools/v3/assert"
+	"gotest.tools/v3/assert/cmp"
 
 	"github.com/uberbrodt/erl-go/chronos"
 	"github.com/uberbrodt/erl-go/erl"
@@ -81,6 +82,27 @@ func TestGenServer_Call_StopAndReply(t *testing.T) {
 		assert.Assert(t, msg.Proc.Equals(gensrvPID))
 	}
 	assert.Assert(t, erl.IsAlive(gensrvPID) == false)
+}
+
+func TestGenServer_Call_PanicReturnsException(t *testing.T) {
+	args := TestGSArgs{count: 2}
+
+	trPID, _ := erl.NewTestReceiver(t)
+	gensrvPID, err := StartLink[TestGS](trPID, TestGS{}, args)
+	assert.NilError(t, err)
+
+	_, err = Call(trPID, gensrvPID,
+		taggedRequest{
+			tag:   "anything",
+			value: 12,
+			err:   exitreason.Exception(errors.New("some error")),
+			callProbe: func(self erl.PID, arg any, from From, state TestGS) (any, TestGS) {
+				panic("uh-oh")
+			},
+		}, chronos.Dur("5s"))
+
+	assert.Assert(t, exitreason.IsException(err))
+	assert.ErrorContains(t, err, "uh-oh")
 }
 
 func TestGenServer_Call_NoReplyStop(t *testing.T) {
@@ -221,6 +243,70 @@ func TestGenServer_Init_ReturnsStop(t *testing.T) {
 	assert.Assert(t, !erl.IsAlive(genSrvPID))
 }
 
+func TestGenServer_Init_PanicReturnsExceptionReason(t *testing.T) {
+	trPID, tr := erl.NewTestReceiver(t)
+	args := TestGSArgs{
+		count: 2,
+		initProbe: func(self erl.PID, args any) (state TestGS, cont any, err error) {
+			panic("uh-oh")
+		},
+	}
+	name := erl.Name("myPid4")
+
+	genSrvPID, err := StartLink[TestGS](trPID, TestGS{}, args, SetName(name))
+	assert.Assert(t, exitreason.IsException(err))
+	assert.ErrorContains(t, err, "uh-oh")
+
+	success := tr.Loop(func(msg any) bool {
+		xit, ok := msg.(erl.ExitMsg)
+
+		if !ok {
+			return false
+		}
+
+		if xit.Proc.Equals(genSrvPID) {
+			return true
+		}
+		return false
+	})
+
+	assert.Assert(t, success)
+
+	assert.Assert(t, !erl.IsAlive(genSrvPID))
+}
+
+func TestGenServer_Init_PanicsAreAlwaysExceptions(t *testing.T) {
+	trPID, tr := erl.NewTestReceiver(t)
+	args := TestGSArgs{
+		count: 2,
+		initProbe: func(self erl.PID, args any) (state TestGS, cont any, err error) {
+			panic(exitreason.Shutdown("uh-oh"))
+		},
+	}
+	name := erl.Name("myPid4")
+
+	genSrvPID, err := StartLink[TestGS](trPID, TestGS{}, args, SetName(name))
+	assert.Assert(t, exitreason.IsException(err))
+	assert.ErrorContains(t, err, "uh-oh")
+
+	success := tr.Loop(func(msg any) bool {
+		xit, ok := msg.(erl.ExitMsg)
+
+		if !ok {
+			return false
+		}
+
+		if xit.Proc.Equals(genSrvPID) {
+			return true
+		}
+		return false
+	})
+
+	assert.Assert(t, success)
+
+	assert.Assert(t, !erl.IsAlive(genSrvPID))
+}
+
 func TestGenServer_Init_ReturnsIgnore(t *testing.T) {
 	trPID, tr := erl.NewTestReceiver(t)
 	args := TestGSArgs{
@@ -298,7 +384,7 @@ func TestGenServer_Cast_DoesContinue(t *testing.T) {
 func TestGenServer_Cast_DoesStopOnError(t *testing.T) {
 	tr, receive := NewTestReceiver(t)
 	pid, err := startTestGS(tr, t, TestGS{terminateProbe: func(self erl.PID, exit error, state TestGS) {
-		assert.ErrorIs(t, exit, exitreason.Normal)
+		assert.Check(t, cmp.ErrorIs(exit, exitreason.Normal))
 		receive <- 1
 	}}, TestGSArgs{})
 	assert.NilError(t, err)
@@ -372,7 +458,7 @@ func TestGenServer_Info_DoesContinue(t *testing.T) {
 func TestGenServer_Info_DoesStopOnError(t *testing.T) {
 	tr, receive := NewTestReceiver(t)
 	pid, err := startTestGS(tr, t, TestGS{terminateProbe: func(self erl.PID, exit error, state TestGS) {
-		assert.ErrorIs(t, exit, exitreason.Normal)
+		assert.Check(t, cmp.ErrorIs(exit, exitreason.Normal))
 		receive <- 1
 	}}, TestGSArgs{})
 	assert.NilError(t, err)

@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+## [0.7.0] 2023-11-26
+
+### Fixed
+
+- fixed race condition around the trapExit flag
+- fixed arg not passed to App struct (and then the root Supervisor)
+- made a genserver.DefaultOpts() function.
+- removed App.Self(); wasn't necessary and introduced potential issues.
+- allow RootPID to receive an exitSignal from `erl.Exit`
+- handle panics in GenServer.Init so that an error is returned instead of
+  a timeout.
+
+### Added
+
+- tests for application, supervisor
+
+### Removed
+
+- application.App.Self() removed. Not really a use case for it and issues could
+  arise from linking processes to it.
+
+### Changed
+
+- refactor in recurring task to remove duplication
+
 ## [0.6.1] 2023-11-21
 
 ### Fixed

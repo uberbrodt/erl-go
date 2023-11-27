@@ -201,7 +201,7 @@ func ProcessFlag(self PID, flag ProcFlag, value any) {
 	if flag == TrapExit {
 		v := value.(bool)
 
-		self.p.trapExits = v
+		self.p.setTrapExits(v)
 	}
 }
 
