@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- flaky `application` test was not waiting for application ExitMsg before verifying
+  the PID status.
+
+### Changed
+
+- [port] is largely re-written. The major change is that non-error exits from
+  the Port will return `exitreason.Normal`, which will only appear to the
+  PortOwner if it is trapping exits.
+- Besides that, many options were added to `port`. It is considered largely
+  complete at this point.
+
+- In `genserver` we have a small but significant change to the `HandleContinue`
+  return type. You can now return a third return item to Continue to another
+  handler.
+
 ## [0.7.0] 2023-11-26
 
 ### Fixed
