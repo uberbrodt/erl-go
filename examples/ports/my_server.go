@@ -45,14 +45,14 @@ func (s MyServer) HandleCast(self erl.PID, anymsg any, state MyServerState) (gen
 func (s MyServer) Terminate(self erl.PID, reason error, state MyServerState) {
 }
 
-func (s MyServer) HandleContinue(self erl.PID, continuation any, state MyServerState) (MyServerState, error) {
+func (s MyServer) HandleContinue(self erl.PID, continuation any, state MyServerState) (MyServerState, any, error) {
 	switch continuation.(type) {
 	case startPort:
 		log.Printf("starting port")
 		state.portPID = port.Open(self, port.NewPortCmd("./examples/ports/testport.sh"))
 		erl.SendAfter(self, closePort{}, chronos.Dur("10s"))
 	}
-	return state, nil
+	return state, nil, nil
 }
 
 func (s MyServer) HandleInfo(self erl.PID, anymsg any, state MyServerState) (genserver.InfoResult[MyServerState], error) {

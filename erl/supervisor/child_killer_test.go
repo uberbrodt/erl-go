@@ -17,16 +17,16 @@ func TestStopTimeout_ProcessesExitNormally(t *testing.T) {
 
 	testMsg1 := genserver.NewTestMsg[TestSrvState](
 		genserver.SetContinueProbe[TestSrvState](
-			func(self erl.PID, state TestSrvState) (TestSrvState, error) {
+			func(self erl.PID, state TestSrvState) (TestSrvState, any, error) {
 				erl.Send(trPID, "child1_started")
-				return state, nil
+				return state, nil, nil
 			},
 		))
 	testMsg2 := genserver.NewTestMsg[TestSrvState](
 		genserver.SetContinueProbe[TestSrvState](
-			func(self erl.PID, state TestSrvState) (TestSrvState, error) {
+			func(self erl.PID, state TestSrvState) (TestSrvState, any, error) {
 				erl.Send(trPID, "child2_started")
-				return state, nil
+				return state, nil, nil
 			},
 		))
 
@@ -86,17 +86,17 @@ func TestStopTimeout_ReturnsErrorWhenChildTimesout(t *testing.T) {
 
 	testMsg1 := genserver.NewTestMsg[TestSrvState](
 		genserver.SetContinueProbe[TestSrvState](
-			func(self erl.PID, state TestSrvState) (TestSrvState, error) {
+			func(self erl.PID, state TestSrvState) (TestSrvState, any, error) {
 				erl.Send(trPID, "child1_started")
-				return state, nil
+				return state, nil, nil
 			},
 		))
 
 	testMsg2 := genserver.NewTestMsg[TestSrvState](
 		genserver.SetContinueProbe[TestSrvState](
-			func(self erl.PID, state TestSrvState) (TestSrvState, error) {
+			func(self erl.PID, state TestSrvState) (TestSrvState, any, error) {
 				erl.Send(trPID, "child2_started")
-				return state, nil
+				return state, nil, nil
 			},
 		))
 

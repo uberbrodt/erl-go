@@ -194,9 +194,9 @@ func (s SupervisorS) HandleCast(self erl.PID, arg any, state supervisorState) (g
 	return genserver.CastResult[supervisorState]{State: state}, nil
 }
 
-func (s SupervisorS) HandleContinue(self erl.PID, continuation any, state supervisorState) (supervisorState, error) {
+func (s SupervisorS) HandleContinue(self erl.PID, continuation any, state supervisorState) (supervisorState, any, error) {
 	// TODO: IMPLEMENT
-	return state, nil
+	return state, nil, nil
 }
 
 func (s SupervisorS) Terminate(self erl.PID, arg error, state supervisorState) {

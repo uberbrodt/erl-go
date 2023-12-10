@@ -6,7 +6,7 @@ type TestMsg[STATE any] struct {
 	// probe can be used to inject functionality, reply back in cast requests, etc.
 	Probe         func(self erl.PID, arg any, state STATE) (cont any, newState STATE, err error)
 	CallProbe     func(self erl.PID, arg any, from From, state STATE) (call CallResult[STATE], err error)
-	ContinueProbe func(self erl.PID, state STATE) (newState STATE, err error)
+	ContinueProbe func(self erl.PID, state STATE) (newState STATE, continuation any, err error)
 	Arg           any
 }
 
@@ -26,10 +26,17 @@ func SetCallProbe[STATE any](probe func(self erl.PID, arg any, from From, state 
 	}
 }
 
-func SetContinueProbe[STATE any](probe func(self erl.PID, state STATE) (newState STATE, err error)) func(tm TestMsg[STATE]) TestMsg[STATE] {
+func SetContinueProbe[STATE any](probe func(self erl.PID, state STATE) (newState STATE, continuation any, err error)) func(tm TestMsg[STATE]) TestMsg[STATE] {
 	return func(tm TestMsg[STATE]) TestMsg[STATE] {
 		tm.ContinueProbe = probe
 		return tm
+	}
+}
+
+func SetContinueInitProbe[STATE any](probe func(self erl.PID, state STATE) (newState STATE, continuation any, err error)) func(ts TestServer[STATE]) TestServer[STATE] {
+	return func(ts TestServer[STATE]) TestServer[STATE] {
+		ts.ContinueProbe = probe
+		return ts
 	}
 }
 
@@ -49,10 +56,11 @@ func NewTestMsg[STATE any](opts ...func(tm TestMsg[STATE]) TestMsg[STATE]) TestM
 }
 
 type TestServer[STATE any] struct {
-	TermProbe    func(self erl.PID, reason error, state STATE)
-	InitProbe    func(self erl.PID, args any) (STATE, any, error)
-	InitialState STATE
-	TestReceiver erl.PID
+	TermProbe     func(self erl.PID, reason error, state STATE)
+	InitProbe     func(self erl.PID, args any) (STATE, any, error)
+	ContinueProbe func(self erl.PID, state STATE) (newState STATE, continuation any, err error)
+	InitialState  STATE
+	TestReceiver  erl.PID
 }
 
 type TestNotifInit[STATE any] struct {
@@ -203,19 +211,23 @@ func (ts TestServer[STATE]) HandleInfo(self erl.PID, request any, state STATE) (
 	return infoResult, err
 }
 
-func (ts TestServer[STATE]) HandleContinue(self erl.PID, continuation any, state STATE) (STATE, error) {
+func (ts TestServer[STATE]) HandleContinue(self erl.PID, continuation any, state STATE) (STATE, any, error) {
 	req := continuation.(TestMsg[STATE])
 	newState := state
+	var cont any
 	var err error
 
 	if req.ContinueProbe != nil {
-		newState, err = req.ContinueProbe(self, state)
+		newState, cont, err = req.ContinueProbe(self, state)
+	}
+	if ts.ContinueProbe != nil {
+		newState, cont, err = ts.ContinueProbe(self, state)
 	}
 
 	if !ts.TestReceiver.IsNil() {
 		erl.Send(ts.TestReceiver, TestNotifContinue[STATE]{Self: self, State: newState, Request: req, Error: err})
 	}
-	return state, nil
+	return newState, cont, nil
 }
 
 func (ts TestServer[STATE]) Terminate(self erl.PID, reason error, state STATE) {

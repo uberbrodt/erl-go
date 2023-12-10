@@ -52,8 +52,8 @@ func (s MyServer) HandleCast(self erl.PID, anymsg any, state MyServerState) (gen
 func (s MyServer) Terminate(self erl.PID, reason error, state MyServerState) {
 }
 
-func (s MyServer) HandleContinue(self erl.PID, continuation any, state MyServerState) (MyServerState, error) {
-	return state, nil
+func (s MyServer) HandleContinue(self erl.PID, continuation any, state MyServerState) (MyServerState, any, error) {
+	return state, nil, nil
 }
 
 func (s MyServer) HandleInfo(self erl.PID, anymsg any, state MyServerState) (genserver.InfoResult[MyServerState], error) {
