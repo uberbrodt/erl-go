@@ -45,14 +45,14 @@ func (s MyServer) HandleCast(self erl.PID, anymsg any, state MyServerState) (gen
 func (s MyServer) Terminate(self erl.PID, reason error, state MyServerState) {
 }
 
-func (s MyServer) HandleContinue(self erl.PID, continuation any, state MyServerState) (MyServerState, error) {
+func (s MyServer) HandleContinue(self erl.PID, continuation any, state MyServerState) (MyServerState, any, error) {
 	switch continuation.(type) {
 	case startPort:
 		log.Printf("starting port")
-		state.portPID = port.Open(self, "./examples/ports/testport.sh")
+		state.portPID = port.Open(self, port.NewCmd("./examples/ports/testport.sh"))
 		erl.SendAfter(self, closePort{}, chronos.Dur("10s"))
 	}
-	return state, nil
+	return state, nil, nil
 }
 
 func (s MyServer) HandleInfo(self erl.PID, anymsg any, state MyServerState) (genserver.InfoResult[MyServerState], error) {
@@ -61,6 +61,9 @@ func (s MyServer) HandleInfo(self erl.PID, anymsg any, state MyServerState) (gen
 		erl.Unlink(self, state.portPID)
 		port.Close(self, state.portPID)
 		return genserver.InfoResult[MyServerState]{State: state}, exitreason.Normal
+	case port.Message:
+		log.Printf("MyServer got PortMessage message: %s", string(msg.Data))
+
 	default:
 		log.Printf("MyServer got unhandled message: %+v", msg)
 	}

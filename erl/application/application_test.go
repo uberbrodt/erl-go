@@ -85,6 +85,7 @@ func TestStart_ErrorsCausePanic(t *testing.T) {
 type startTicking struct{}
 
 func TestApp_SupervisorExitCallsCancel(t *testing.T) {
+	self, tr := erl.NewTestReceiver(t)
 	timeBomb := genserver.NewTestServer[int](genserver.SetInitProbe[int](func(self erl.PID, args any) (int, any, error) {
 		erl.Send(self, genserver.NewTestMsg[int](
 			genserver.SetProbe[int](func(self erl.PID, arg any, state int) (any, int, error) {
@@ -113,9 +114,25 @@ func TestApp_SupervisorExitCallsCancel(t *testing.T) {
 		cancelled <- "cancelled"
 	})
 
+	erl.Link(self, app.self)
+
 	<-cancelled
 
+	var exitMsg erl.ExitMsg
+	tr.Loop(func(anymsg any) bool {
+		switch msg := anymsg.(type) {
+		case erl.ExitMsg:
+			exitMsg = msg
+			return true
+
+		default:
+			return false
+
+		}
+	})
+
 	assert.Assert(t, app.Stopped())
+	assert.Assert(t, exitMsg.Proc.Equals(app.self))
 	assert.Assert(t, !erl.IsAlive(app.self))
 }
 

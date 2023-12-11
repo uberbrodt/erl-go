@@ -71,7 +71,7 @@ type taggedRequest struct {
 	// probe can be used to inject functionality, reply back in cast requests, etc.
 	probe         func(self erl.PID, state TestGS) (newState TestGS)
 	callProbe     func(self erl.PID, arg any, from From, state TestGS) (reply any, newState TestGS)
-	continueProbe func(self erl.PID, state TestGS) (newState TestGS, err error)
+	continueProbe func(self erl.PID, state TestGS) (newState TestGS, continuation any, err error)
 	err           error
 	cont          bool
 }
@@ -166,10 +166,10 @@ func (gs TestGS) Terminate(self erl.PID, arg error, state TestGS) {
 	}
 }
 
-func (gs TestGS) HandleContinue(self erl.PID, continuation any, state TestGS) (TestGS, error) {
+func (gs TestGS) HandleContinue(self erl.PID, continuation any, state TestGS) (TestGS, any, error) {
 	req := continuation.(taggedRequest)
 	if req.continueProbe != nil {
 		return req.continueProbe(self, state)
 	}
-	return state, nil
+	return state, nil, nil
 }

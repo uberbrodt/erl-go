@@ -145,9 +145,9 @@ func TestGenServer_Call_NoReplyContinue_Reply(t *testing.T) {
 				state.from = from
 				return nil, state
 			},
-			continueProbe: func(self erl.PID, state TestGS) (TestGS, error) {
+			continueProbe: func(self erl.PID, state TestGS) (TestGS, any, error) {
 				Reply(state.from, state.Count+1)
-				return state, nil
+				return state, nil, nil
 			},
 		}, chronos.Dur("5s"))
 
@@ -173,9 +173,9 @@ func TestGenServer_Call_NoReplyContinue_ExitWithTimeout(t *testing.T) {
 				state.from = from
 				return nil, state
 			},
-			continueProbe: func(self erl.PID, state TestGS) (TestGS, error) {
+			continueProbe: func(self erl.PID, state TestGS) (TestGS, any, error) {
 				time.After(chronos.Dur("10s"))
-				return state, nil
+				return state, nil, nil
 			},
 		}, chronos.Dur("200ms"))
 
@@ -343,9 +343,9 @@ func TestGenServer_Init_Continues(t *testing.T) {
 		count: 2,
 		initProbe: func(self erl.PID, args any) (state TestGS, cont any, err error) {
 			return TestGS{Count: 2}, taggedRequest{
-				continueProbe: func(self erl.PID, state TestGS) (TestGS, error) {
+				continueProbe: func(self erl.PID, state TestGS) (TestGS, any, error) {
 					receive <- "continue"
-					return state, nil
+					return state, nil, nil
 				},
 			}, nil
 		},
@@ -367,9 +367,9 @@ func TestGenServer_Cast_DoesContinue(t *testing.T) {
 
 	Cast(pid, taggedRequest{
 		cont: true,
-		continueProbe: func(self erl.PID, state TestGS) (TestGS, error) {
+		continueProbe: func(self erl.PID, state TestGS) (TestGS, any, error) {
 			receive <- 2
-			return state, nil
+			return state, nil, nil
 		},
 	})
 	select {
@@ -441,9 +441,9 @@ func TestGenServer_Info_DoesContinue(t *testing.T) {
 
 	erl.Send(pid, taggedRequest{
 		cont: true,
-		continueProbe: func(self erl.PID, state TestGS) (TestGS, error) {
+		continueProbe: func(self erl.PID, state TestGS) (TestGS, any, error) {
 			receive <- 2
-			return state, nil
+			return state, nil, nil
 		},
 	})
 	select {
@@ -486,4 +486,52 @@ func TestGenServer_Info_DoesStopOnError(t *testing.T) {
 		}
 	}
 	assert.Assert(t, terminateCalled)
+}
+
+type goTestContinue struct{}
+
+type continueTestS struct {
+	times int
+}
+
+func TestGenServer_Init_MultipleContinues(t *testing.T) {
+	selfT, tr := erl.NewTestReceiver(t)
+
+	contFn := func(self erl.PID, state continueTestS) (continueTestS, any, error) {
+		if state.times < 2 {
+			state.times++
+			erl.Send(selfT, goTestContinue{})
+			return state, NewTestMsg[continueTestS](), nil
+		}
+		return state, nil, nil
+	}
+
+	ts := NewTestServer[continueTestS](
+		SetInitProbe(func(probeSelf erl.PID, args any) (continueTestS, any, error) {
+			return continueTestS{}, NewTestMsg[continueTestS](), nil
+		}),
+		SetContinueInitProbe[continueTestS](contFn),
+	)
+
+	srvPID, err := StartLink[continueTestS](selfT, ts, nil)
+	assert.NilError(t, err)
+
+	continueCount := 0
+	tr.Loop(func(anymsg any) bool {
+		switch anymsg.(type) {
+		case goTestContinue:
+			continueCount++
+			if continueCount == 2 {
+				return true
+			}
+			return false
+
+		default:
+			return false
+
+		}
+	})
+
+	assert.Assert(t, erl.IsAlive(srvPID))
+	assert.Equal(t, continueCount, 2)
 }

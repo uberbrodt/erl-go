@@ -1,15 +1,36 @@
-// WARNING: the port package is experimental and the interfaces may change
+/*
+Package port provides a [Runnable] used to interact with external system processes (ExtProg).
+It uses the [os.Exec.Cmd] subsystem from the stdlib, but wraps it with Processes.
+This provides the following guarantees:
 
-// ports are used to interact with external system processes. Basically wraps [os.Exec.Cmd] instance,
-// but you get exit signals if the process exits. If the external command closes without error,
-// the port process will exit with [exitreason.Normal]
+ 1. A Port must be started by another process. This process will be known as the PortOwner.
+
+ 2. When the ExtProg exits, the PortOwner will receive an [erl.ExitMsg] if it is non-zero.
+    If the process exits cleanly, it will have [exitreason.Normal] and will be ignored by the PortOwner
+    unless it is trapping exits (this is behavior that applies to all processes). However an ExtProg
+    returning non-zero exit code will cause the PortOwner
+    to crash (if not trapping exits).
+
+ 3. If the [ReturnExitStatus] option is set, the PortOwner will receive a [PortExited] msg, regardless
+    of the ExtProg exit code.
+
+ 4. By default, the stdout of the ExtProg will sent to the PortOwner, line by line, as a [PortMessage].
+    Alternative decoding options can be set when opening the port by provding a [bufio.SplitFunc] or
+    using one of the existing Decode* Opts in this package. To send this output else where, use
+    [SetStdOut] with a [*os.File] or buffer, or [IgnoreStdOut] to ignore output completely.
+
+ 5. Data can be sent to the ExtProg via stdin via [PortCommand] messages. It is up to the sender to
+    format the messages in a way the ExtProg can parse.
+
+The above features allow for asynchronous management of both long-running and transient ExtProgs, integrated
+into a supervision tree.
+*/
 package port
 
 import (
 	"bufio"
 	"fmt"
 	"io"
-	"log"
 	"os/exec"
 	"syscall"
 
@@ -17,42 +38,33 @@ import (
 	"github.com/uberbrodt/erl-go/erl/exitreason"
 )
 
-type ShutdownReason string
+type status string
 
 const (
-	PortExitedReason = "port exited"
-	PortClosedReason = "port closed"
+	closing status = "closing"
+	closed  status = "closed"
 )
-
-func Open(self erl.PID, cmd string, args ...string) erl.PID {
-	p := &Port{cmdArg: cmd, args: args, parent: self}
-	return erl.Spawn(p)
-}
-
-func Close(self erl.PID, port erl.PID) {
-	erl.Send(port, closePort{sender: self})
-}
 
 type Port struct {
 	cmdArg string
 	args   []string
 	cmd    *exec.Cmd
+	opts   Opts
 	parent erl.PID
 	stdout io.ReadCloser
 	stderr io.ReadCloser
 	stdin  io.WriteCloser
+	closer erl.PID
+	status status
 }
 
-type portExited struct {
-	err error
-}
-
-type closePort struct {
-	sender erl.PID
-}
-
-type PortClosed struct {
-	Port erl.PID
+func (p *Port) kill() {
+	// Good little UNIX processes will exit when stdin is closed
+	p.stdin.Close()
+	// For the bad ones, we drop the hammer
+	if p.opts.exitSignal != nil {
+		syscall.Kill(-p.cmd.Process.Pid, *p.opts.exitSignal)
+	}
 }
 
 func (p *Port) Receive(self erl.PID, inbox <-chan any) error {
@@ -70,13 +82,40 @@ func (p *Port) Receive(self erl.PID, inbox <-chan any) error {
 	if initErr != nil {
 		return exitreason.Exception(initErr)
 	}
-	p.stdout, initErr = p.cmd.StdoutPipe()
-	if initErr != nil {
-		return exitreason.Exception(initErr)
+
+	if p.opts.stdout != nil {
+		p.cmd.Stdout = p.opts.stdout
+	} else if p.opts.ignoreStdOut {
+		// leaving p.cmd.Stdout equal to nil will send the output to /dev/null
+	} else {
+		p.stdout, initErr = p.cmd.StdoutPipe()
+		if initErr != nil {
+			return exitreason.Exception(initErr)
+		}
+		go func() {
+			buf := bufio.NewScanner(p.stdout)
+			buf.Split(p.opts.decoder)
+			for buf.Scan() {
+				erl.Send(p.parent, Message{Port: self, Data: buf.Bytes()})
+			}
+		}()
 	}
-	p.stderr, initErr = p.cmd.StderrPipe()
-	if initErr != nil {
-		return exitreason.Exception(initErr)
+
+	// by default, stderr is ignored entirely
+	if p.opts.stderr != nil {
+		p.cmd.Stderr = p.opts.stderr
+	} else if p.opts.sendStdErr {
+		p.stderr, initErr = p.cmd.StderrPipe()
+		if initErr != nil {
+			return exitreason.Exception(initErr)
+		}
+		go func() {
+			buf := bufio.NewScanner(p.stderr)
+			buf.Split(p.opts.stdErrDecoder)
+			for buf.Scan() {
+				erl.Send(p.parent, ErrMessage{Port: self, Data: buf.Bytes()})
+			}
+		}()
 	}
 
 	err := p.cmd.Start()
@@ -89,21 +128,8 @@ func (p *Port) Receive(self erl.PID, inbox <-chan any) error {
 	}
 
 	go func() {
-		buf := bufio.NewScanner(p.stdout)
-		for buf.Scan() {
-			log.Printf("STDOUT: %s", buf.Text())
-		}
-	}()
-	go func() {
-		buf := bufio.NewScanner(p.stderr)
-		for buf.Scan() {
-			log.Printf("STDERR: %s", buf.Text())
-		}
-	}()
-
-	go func() {
 		err := p.cmd.Wait()
-		erl.Send(self, portExited{err: err})
+		erl.Send(self, Exited{Err: err, Port: self})
 	}()
 
 	for {
@@ -116,23 +142,40 @@ func (p *Port) Receive(self erl.PID, inbox <-chan any) error {
 		switch msg := anymsg.(type) {
 		case erl.ExitMsg:
 			if msg.Proc.Equals(p.parent) {
-				// Good little UNIX processes will exit when stdin is closed
 				erl.DebugPrintf("port %v received ExitMsg from parent, killing external process", self)
-				p.stdin.Close()
-				// For the bad ones, we drop the hammer
-				syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
+				p.kill()
 				return exitreason.Shutdown("Port exited because the parent process exited")
 			}
+		case Command:
+			erl.Logger.Printf("sending message to port: %s", msg)
+			_, err := p.stdin.Write(msg)
+			if err != nil {
+				p.kill()
+				return err
+			}
+			erl.Logger.Printf("success sending message: %s", msg)
 		case closePort:
-			p.stdin.Close()
-			p.cmd.Process.Kill()
-			erl.Send(msg.sender, PortClosed{Port: self})
-			return exitreason.Shutdown(PortClosedReason)
-		case portExited:
-			if msg.err == nil {
-				return exitreason.Shutdown(PortExitedReason)
+			p.kill()
+			p.status = closing
+			p.closer = msg.sender
+		case Exited:
+			if p.opts.exitStatus {
+				erl.Send(p.parent, msg)
+			}
+
+			// if a close was requested, we always return  normal
+			if p.status == closing {
+				if !p.closer.Equals(p.parent) {
+					erl.Send(p.closer, Closed{Port: self, Err: msg.Err})
+				}
+				erl.Send(p.parent, Closed{Port: self, Err: msg.Err})
+				return exitreason.Normal
+			}
+
+			if msg.Err == nil {
+				return exitreason.Normal
 			} else {
-				return exitreason.Exception(msg.err)
+				return exitreason.Exception(msg.Err)
 			}
 		}
 

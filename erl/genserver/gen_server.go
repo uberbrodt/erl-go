@@ -58,7 +58,9 @@ type GenServer[STATE any] interface {
 	HandleCall(self erl.PID, request any, from From, state STATE) (CallResult[STATE], error)
 	HandleCast(self erl.PID, request any, state STATE) (CastResult[STATE], error)
 	HandleInfo(self erl.PID, msg any, state STATE) (InfoResult[STATE], error)
-	HandleContinue(self erl.PID, continuation any, state STATE) (STATE, error)
+	// Handles Continuation terms from other callbacks. Set the [continueTerm] to re-enter the [HandleContinue]
+	// callback with a new state
+	HandleContinue(self erl.PID, continuation any, state STATE) (newState STATE, continueTerm any, err error)
 	Terminate(self erl.PID, reason error, state STATE)
 }
 
@@ -112,11 +114,11 @@ func (gs *GenServerS[STATE]) Receive(self erl.PID, inbox <-chan any) error {
 	gs.state = initReturn.State
 
 	if initReturn.Continue != nil {
-		state, err := gs.callback.HandleContinue(self, initReturn.Continue, gs.state)
+		s, err := gs.doContinue(self, initReturn.Continue, gs.state)
 		if err != nil {
 			return err
 		}
-		gs.state = state
+		gs.state = s
 	}
 
 	for {
@@ -178,6 +180,23 @@ func (gs *GenServerS[STATE]) handleInit(self erl.PID, msg any) (result InitResul
 	return
 }
 
+func (gs *GenServerS[STATE]) doContinue(self erl.PID, inCont any, inState STATE) (STATE, error) {
+	s := inState
+	cont := inCont
+	var contErr error
+
+	for {
+		s, cont, contErr = gs.callback.HandleContinue(self, cont, s)
+		if contErr != nil {
+			return s, contErr
+		}
+		if cont == nil {
+			break
+		}
+	}
+	return s, nil
+}
+
 func (gs *GenServerS[STATE]) handleInfoRequest(self erl.PID, msg any) error {
 	result, err := gs.callback.HandleInfo(self, msg, gs.state)
 	gs.state = result.State
@@ -190,7 +209,7 @@ func (gs *GenServerS[STATE]) handleInfoRequest(self erl.PID, msg any) error {
 	}
 
 	if result.Continue != nil {
-		state, err := gs.callback.HandleContinue(self, result.Continue, gs.state)
+		state, err := gs.doContinue(self, result.Continue, gs.state)
 		gs.state = state
 		return err
 	}
@@ -219,7 +238,7 @@ func (gs *GenServerS[STATE]) handleCallRequest(self erl.PID, msg callRequest) (b
 
 	// invoke HandleContinue callback when we have a ContinueTerm
 	if result.Continue != nil {
-		state, err := gs.callback.HandleContinue(self, result.Continue, gs.state)
+		state, err := gs.doContinue(self, result.Continue, gs.state)
 		if err != nil {
 			return true, err
 		}
@@ -240,7 +259,7 @@ func (gs *GenServerS[STATE]) handleCastRequest(self erl.PID, msg castRequest) er
 
 	// invoke HandleContinue callback when we have a ContinueTerm
 	if result.Continue != nil {
-		state, err := gs.callback.HandleContinue(self, result.Continue, gs.state)
+		state, err := gs.doContinue(self, result.Continue, gs.state)
 		if err != nil {
 			return err
 		}

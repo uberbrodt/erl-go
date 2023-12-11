@@ -34,7 +34,7 @@ func (tr *TestReceiver) Receive(self PID, inbox <-chan any) error {
 			if !ok {
 				return exitreason.Normal
 			}
-			tr.t.Logf("TestReceiver got message: %+v", msg)
+			tr.t.Logf("TestReceiver got message: %#v", msg)
 			tr.c <- msg
 		case <-time.After(testTimeout):
 			tr.t.Fatal("TestReceiver: test timeout")
@@ -53,7 +53,7 @@ func (tr *TestReceiver) Loop(handler func(msg any) bool) bool {
 	for {
 		select {
 		case msg, ok := <-tr.c:
-			tr.t.Logf("Loop got message: %+v", msg)
+			tr.t.Logf("Loop got message: %#v", msg)
 			if !ok {
 				return false
 			}

@@ -223,7 +223,7 @@ func (p *Process) send(sig Signal) {
 			select {
 			case p.receive <- sig:
 				return
-			case <-time.After(chronos.Dur("50ms")):
+			case <-time.After(chronos.Dur("5ms")):
 				notRunning = p.getStatus() != running
 			}
 		}

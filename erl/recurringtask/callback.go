@@ -53,8 +53,8 @@ func (s *rtSrv[S, A]) HandleCast(self erl.PID, anymsg any, state rtState[S, A]) 
 
 func (s *rtSrv[S, A]) Terminate(self erl.PID, reason error, state rtState[S, A]) {}
 
-func (s *rtSrv[S, A]) HandleContinue(self erl.PID, continuation any, state rtState[S, A]) (rtState[S, A], error) {
-	return state, nil
+func (s *rtSrv[S, A]) HandleContinue(self erl.PID, continuation any, state rtState[S, A]) (rtState[S, A], any, error) {
+	return state, nil, nil
 }
 
 func (s *rtSrv[S, A]) HandleInfo(self erl.PID, anymsg any, state rtState[S, A]) (genserver.InfoResult[rtState[S, A]], error) {
