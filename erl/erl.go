@@ -166,12 +166,15 @@ func Send(pid PID, term any) {
 	sendSignal(pid, messageSignal{term: term})
 }
 
-func SendAfter(pid PID, term any, tout time.Duration) {
+func SendAfter(pid PID, term any, tout time.Duration) TimerRef {
 	if pid != UndefinedPID && pid.p.getStatus() == running {
 		t := &timer{to: pid, term: term, tout: tout}
 
-		Spawn(t)
+		timerPid := Spawn(t)
+
+		return TimerRef{pid: timerPid}
 	}
+	return TimerRef{}
 }
 
 func sendSignal(pid PID, signal Signal) {

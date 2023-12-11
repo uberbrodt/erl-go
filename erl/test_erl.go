@@ -48,6 +48,29 @@ func (tr *TestReceiver) Receiver() <-chan any {
 	return tr.c
 }
 
+// Like [Loop] but exit after [tout]
+func (tr *TestReceiver) LoopFor(tout time.Duration, handler func(msg any) bool) error {
+	tr.t.Logf("TestReceiver starting Loop")
+	for {
+		select {
+		case msg, ok := <-tr.c:
+			tr.t.Logf("Loop got message: %#v", msg)
+			if !ok {
+				return nil
+			}
+			if stop := handler(msg); stop {
+				return nil
+			}
+
+		case <-time.After(tout):
+			// tr.t.Fatal("TestReceiver.Loop test timeout")
+			// close(th.c)
+
+			return exitreason.Timeout
+		}
+	}
+}
+
 func (tr *TestReceiver) Loop(handler func(msg any) bool) bool {
 	tr.t.Logf("TestReceiver starting Loop")
 	for {

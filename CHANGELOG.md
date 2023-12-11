@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.1] 2023-12-11
+
+### Changed
+
+- `erl.SendAfter` returns a `erl.TimerRef`. This is the argument to
+  `erl.CancelTimer`
+
+### Added
+
+- `erl.CancelTimer` will cancel a timer if it exists. If the `TimerRef` is
+  invalid, an error will be returned.
+
 ## [0.8.0] 2023-12-11
 
 ### Fixed
