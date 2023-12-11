@@ -8,16 +8,9 @@ import (
 	"github.com/uberbrodt/erl-go/erl"
 )
 
-type ShutdownReason string
-
-const (
-	PortExitedReason = "port exited"
-	PortClosedReason = "port closed"
-)
-
 // returned when the port process returns and [ReturnExitStatus] is true.
 // if [err] is not nil, it may be an [*os/exec.ExitError]
-type PortExited struct {
+type Exited struct {
 	Port erl.PID
 	Err  error
 }
@@ -26,27 +19,34 @@ type closePort struct {
 	sender erl.PID
 }
 
-type PortClosed struct {
+type Closed struct {
 	Port erl.PID
 	// the exit error of the ExtProg, if any
 	Err error
 }
 
-type PortCommand []byte
+type Command []byte
 
 // decocded data from the ExtProg stdout
-type PortMessage []byte
+type Message struct {
+	Port erl.PID
+	Data []byte
+}
 
 // Received from a port error stream
-type PortErrMessage []byte
+type ErrMessage struct {
+	Port erl.PID
+	Data []byte
+}
 
-type PortCmd struct {
+type Cmd struct {
 	cmd  string
 	args []string
 }
 
-func NewPortCmd(cmd string, args ...string) PortCmd {
-	return PortCmd{cmd, args}
+// the external program to run [cmd] and a list of its arguments
+func NewCmd(cmd string, args ...string) Cmd {
+	return Cmd{cmd, args}
 }
 
 // Will read [num] bytes from the external command before returning
@@ -166,7 +166,7 @@ func buildOpts(opts []Opt) Opts {
 // Opens a port.
 //
 // TODO: list all options here.
-func Open(self erl.PID, cmd PortCmd, opts ...Opt) erl.PID {
+func Open(self erl.PID, cmd Cmd, opts ...Opt) erl.PID {
 	optS := buildOpts(opts)
 	p := &Port{
 		cmdArg: cmd.cmd,
@@ -187,7 +187,7 @@ func Close(self erl.PID, port erl.PID) {
 // external procs stdin. It's the callers responsibility to encode [msg]
 // to a format the external program understands.
 func Cast(port erl.PID, msg []byte) {
-	erl.Send(port, PortCommand(msg))
+	erl.Send(port, Command(msg))
 }
 
 // TODO: implement a Connect method to take over a port

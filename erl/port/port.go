@@ -96,7 +96,7 @@ func (p *Port) Receive(self erl.PID, inbox <-chan any) error {
 			buf := bufio.NewScanner(p.stdout)
 			buf.Split(p.opts.decoder)
 			for buf.Scan() {
-				erl.Send(p.parent, PortMessage(buf.Bytes()))
+				erl.Send(p.parent, Message{Port: self, Data: buf.Bytes()})
 			}
 		}()
 	}
@@ -113,7 +113,7 @@ func (p *Port) Receive(self erl.PID, inbox <-chan any) error {
 			buf := bufio.NewScanner(p.stderr)
 			buf.Split(p.opts.stdErrDecoder)
 			for buf.Scan() {
-				erl.Send(p.parent, PortErrMessage(buf.Bytes()))
+				erl.Send(p.parent, ErrMessage{Port: self, Data: buf.Bytes()})
 			}
 		}()
 	}
@@ -129,7 +129,7 @@ func (p *Port) Receive(self erl.PID, inbox <-chan any) error {
 
 	go func() {
 		err := p.cmd.Wait()
-		erl.Send(self, PortExited{Err: err, Port: self})
+		erl.Send(self, Exited{Err: err, Port: self})
 	}()
 
 	for {
@@ -146,7 +146,7 @@ func (p *Port) Receive(self erl.PID, inbox <-chan any) error {
 				p.kill()
 				return exitreason.Shutdown("Port exited because the parent process exited")
 			}
-		case PortCommand:
+		case Command:
 			erl.Logger.Printf("sending message to port: %s", msg)
 			_, err := p.stdin.Write(msg)
 			if err != nil {
@@ -158,7 +158,7 @@ func (p *Port) Receive(self erl.PID, inbox <-chan any) error {
 			p.kill()
 			p.status = closing
 			p.closer = msg.sender
-		case PortExited:
+		case Exited:
 			if p.opts.exitStatus {
 				erl.Send(p.parent, msg)
 			}
@@ -166,9 +166,9 @@ func (p *Port) Receive(self erl.PID, inbox <-chan any) error {
 			// if a close was requested, we always return  normal
 			if p.status == closing {
 				if !p.closer.Equals(p.parent) {
-					erl.Send(p.closer, PortClosed{Port: self, Err: msg.Err})
+					erl.Send(p.closer, Closed{Port: self, Err: msg.Err})
 				}
-				erl.Send(p.parent, PortClosed{Port: self, Err: msg.Err})
+				erl.Send(p.parent, Closed{Port: self, Err: msg.Err})
 				return exitreason.Normal
 			}
 

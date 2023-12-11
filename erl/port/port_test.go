@@ -26,7 +26,7 @@ func TestOpen_WritesToStdOutBuffer(t *testing.T) {
 	// assert.NilError(t, err)
 
 	exe := projectpath.Join("erl/port/testdata/ext_line_cmd.sh")
-	port := Open(self, NewPortCmd(exe), SetStdOut(buf))
+	port := Open(self, NewCmd(exe), SetStdOut(buf))
 
 	Cast(port, []byte("foobar\n"))
 	<-time.After(chronos.Dur("50ms"))
@@ -34,7 +34,7 @@ func TestOpen_WritesToStdOutBuffer(t *testing.T) {
 
 	gotClose := tr.Loop(func(anymsg any) bool {
 		switch anymsg.(type) {
-		case PortClosed:
+		case Closed:
 			return true
 		default:
 			return false
@@ -53,16 +53,16 @@ func TestSendsMessageToPortOwner(t *testing.T) {
 	self, tr := erl.NewTestReceiver(t)
 
 	exe := projectpath.Join("erl/port/testdata/ext_line_cmd.sh")
-	port := Open(self, NewPortCmd(exe))
+	port := Open(self, NewCmd(exe))
 
 	Cast(port, []byte("foobar\n"))
 	var gotIntroMsg bool
-	var receivedMessage PortMessage
+	var receivedMessage Message
 
 	gotClose := tr.Loop(func(anymsg any) bool {
 		switch msg := anymsg.(type) {
-		case PortMessage:
-			if strings.Contains(string(msg), "started ext program") {
+		case Message:
+			if strings.Contains(string(msg.Data), "started ext program") {
 				gotIntroMsg = true
 				return false
 			}
@@ -76,33 +76,33 @@ func TestSendsMessageToPortOwner(t *testing.T) {
 	})
 
 	assert.Assert(t, gotClose)
-	assert.DeepEqual(t, string(receivedMessage), "foobar")
+	assert.DeepEqual(t, string(receivedMessage.Data), "foobar")
 }
 
 func TestSendsMessageToPortOwner_NULDecoder(t *testing.T) {
 	self, tr := erl.NewTestReceiver(t)
 
 	exe := projectpath.Join("erl/port/testdata/ext_stream_cmd.sh")
-	port := Open(self, NewPortCmd(exe), DecodeNULs())
+	port := Open(self, NewCmd(exe), DecodeNULs())
 
 	Cast(port, []byte("foobar\000"))
 	Cast(port, []byte("blah blah blah\000"))
 	var gotIntroMsg bool
-	var rMsg1 PortMessage
-	var rMsg2 PortMessage
+	var rMsg1 Message
+	var rMsg2 Message
 
 	gotClose := tr.Loop(func(anymsg any) bool {
 		switch msg := anymsg.(type) {
-		case PortMessage:
-			if strings.Contains(string(msg), "started ext program") {
+		case Message:
+			if strings.Contains(string(msg.Data), "started ext program") {
 				gotIntroMsg = true
 				return false
 			}
-			if len(rMsg1) == 0 {
+			if len(rMsg1.Data) == 0 {
 				rMsg1 = msg
 				return false
 			}
-			if len(rMsg2) == 0 {
+			if len(rMsg2.Data) == 0 {
 				rMsg2 = msg
 				return true
 			}
@@ -116,34 +116,34 @@ func TestSendsMessageToPortOwner_NULDecoder(t *testing.T) {
 
 	assert.Assert(t, gotClose)
 	assert.Assert(t, gotIntroMsg)
-	assert.DeepEqual(t, string(rMsg1), "foobar")
-	assert.DeepEqual(t, string(rMsg2), "blah blah blah")
+	assert.DeepEqual(t, string(rMsg1.Data), "foobar")
+	assert.DeepEqual(t, string(rMsg2.Data), "blah blah blah")
 }
 
 func TestSendsMessageToPortOwner_ByteLenDecoder(t *testing.T) {
 	self, tr := erl.NewTestReceiver(t)
 
 	exe := projectpath.Join("erl/port/testdata/bo_cmd.sh")
-	port := Open(self, NewPortCmd(exe, "8"), DecodeNumBytes(8))
+	port := Open(self, NewCmd(exe, "8"), DecodeNumBytes(8))
 
 	Cast(port, []byte("foobarak"))
 	Cast(port, []byte("blahblahblahblah part"))
-	var rMsg1 PortMessage
-	var rMsg2 PortMessage
-	var rMsg3 PortMessage
+	var rMsg1 Message
+	var rMsg2 Message
+	var rMsg3 Message
 
 	tr.Loop(func(anymsg any) bool {
 		switch msg := anymsg.(type) {
-		case PortMessage:
-			if len(rMsg1) == 0 {
+		case Message:
+			if len(rMsg1.Data) == 0 {
 				rMsg1 = msg
 				return false
 			}
-			if len(rMsg2) == 0 {
+			if len(rMsg2.Data) == 0 {
 				rMsg2 = msg
 				return false
 			}
-			if len(rMsg3) == 0 {
+			if len(rMsg3.Data) == 0 {
 				rMsg3 = msg
 				return true
 			}
@@ -153,9 +153,9 @@ func TestSendsMessageToPortOwner_ByteLenDecoder(t *testing.T) {
 			return false
 		}
 	})
-	assert.DeepEqual(t, string(rMsg1), "foobarak")
-	assert.DeepEqual(t, string(rMsg2), "blahblah")
-	assert.DeepEqual(t, string(rMsg3), "blahblah")
+	assert.DeepEqual(t, string(rMsg1.Data), "foobarak")
+	assert.DeepEqual(t, string(rMsg2.Data), "blahblah")
+	assert.DeepEqual(t, string(rMsg3.Data), "blahblah")
 
 	// TODO: test that we get partial messages when external program is closing
 	// Close(self, port)
@@ -177,23 +177,23 @@ func TestOpts_ReturnExitStatus_WhenZero(t *testing.T) {
 	self, tr := erl.NewTestReceiver(t)
 
 	exe := projectpath.Join("erl/port/testdata/fail_after_time.sh")
-	port := Open(self, NewPortCmd(exe, "3", "0"), ReturnExitStatus())
+	port := Open(self, NewCmd(exe, "3", "0"), ReturnExitStatus())
 
 	var gotIntroMsg bool
 	var msgCnt int
-	var portExit PortExited
+	var portExit Exited
 	tr.Loop(func(anymsg any) bool {
 		switch msg := anymsg.(type) {
-		case PortMessage:
-			if strings.Contains(string(msg), "started") {
+		case Message:
+			if strings.Contains(string(msg.Data), "started") {
 				gotIntroMsg = true
 				return false
 			}
-			if strings.Contains(string(msg), "loop") {
+			if strings.Contains(string(msg.Data), "loop") {
 				msgCnt++
 			}
 			return false
-		case PortExited:
+		case Exited:
 			portExit = msg
 			return true
 
@@ -212,24 +212,24 @@ func TestOpts_ReturnExitStatus_WhenNonZero(t *testing.T) {
 	self, tr := erl.NewTestReceiver(t)
 
 	exe := projectpath.Join("erl/port/testdata/fail_after_time.sh")
-	port := Open(self, NewPortCmd(exe, "3", "1"), ReturnExitStatus())
+	port := Open(self, NewCmd(exe, "3", "1"), ReturnExitStatus())
 
 	var gotIntroMsg bool
 	var msgCnt int
-	var portExit PortExited
+	var portExit Exited
 	var exitMsg erl.ExitMsg
 	tr.Loop(func(anymsg any) bool {
 		switch msg := anymsg.(type) {
-		case PortMessage:
-			if strings.Contains(string(msg), "started") {
+		case Message:
+			if strings.Contains(string(msg.Data), "started") {
 				gotIntroMsg = true
 				return false
 			}
-			if strings.Contains(string(msg), "loop") {
+			if strings.Contains(string(msg.Data), "loop") {
 				msgCnt++
 			}
 			return false
-		case PortExited:
+		case Exited:
 			portExit = msg
 			return false
 		case erl.ExitMsg:
@@ -255,23 +255,23 @@ func TestOpts_IgnoreStdOut(t *testing.T) {
 	self, tr := erl.NewTestReceiver(t)
 
 	exe := projectpath.Join("erl/port/testdata/fail_after_time.sh")
-	port := Open(self, NewPortCmd(exe, "3", "0"), ReturnExitStatus(), IgnoreStdOut())
+	port := Open(self, NewCmd(exe, "3", "0"), ReturnExitStatus(), IgnoreStdOut())
 
 	var gotIntroMsg bool
 	var msgCnt int
-	var portExit PortExited
+	var portExit Exited
 	tr.Loop(func(anymsg any) bool {
 		switch msg := anymsg.(type) {
-		case PortMessage:
-			if strings.Contains(string(msg), "started") {
+		case Message:
+			if strings.Contains(string(msg.Data), "started") {
 				gotIntroMsg = true
 				return false
 			}
-			if strings.Contains(string(msg), "loop") {
+			if strings.Contains(string(msg.Data), "loop") {
 				msgCnt++
 			}
 			return false
-		case PortExited:
+		case Exited:
 			portExit = msg
 			return true
 
@@ -290,25 +290,25 @@ func TestOpts_SetExitSignal(t *testing.T) {
 	self, tr := erl.NewTestReceiver(t)
 
 	exe := projectpath.Join("erl/port/testdata/fail_after_time.sh")
-	port := Open(self, NewPortCmd(exe, "3", "2"), ReturnExitStatus(), SetExitSignal(syscall.SIGINT))
+	port := Open(self, NewCmd(exe, "3", "2"), ReturnExitStatus(), SetExitSignal(syscall.SIGINT))
 
 	var gotIntroMsg bool
 	var gotSigMsg bool
-	var portExit PortExited
+	var portExit Exited
 	tr.Loop(func(anymsg any) bool {
 		switch msg := anymsg.(type) {
-		case PortMessage:
-			if strings.Contains(string(msg), "started") {
+		case Message:
+			if strings.Contains(string(msg.Data), "started") {
 				gotIntroMsg = true
 				Close(self, port)
 				return false
 			}
-			if strings.Contains(string(msg), "SIGINT") {
+			if strings.Contains(string(msg.Data), "SIGINT") {
 				gotSigMsg = true
 				return true
 			}
 			return false
-		case PortExited:
+		case Exited:
 			portExit = msg
 			return true
 
@@ -327,17 +327,17 @@ func TestOpts_ReceiveStderr_GetPortErrMessages(t *testing.T) {
 	self, tr := erl.NewTestReceiver(t)
 
 	exe := projectpath.Join("erl/port/testdata/echo_stderr.sh")
-	Open(self, NewPortCmd(exe, "3", "0"), ReturnExitStatus(), ReceiveStdErr(DecodeLinesSplitFun))
+	Open(self, NewCmd(exe, "3", "0"), ReturnExitStatus(), ReceiveStdErr(DecodeLinesSplitFun))
 
 	var errMsgCnt int
 	tr.Loop(func(anymsg any) bool {
 		switch msg := anymsg.(type) {
-		case PortErrMessage:
-			if strings.Contains(string(msg), "loop") {
+		case ErrMessage:
+			if strings.Contains(string(msg.Data), "loop") {
 				errMsgCnt++
 			}
 			return false
-		case PortExited:
+		case Exited:
 			return true
 
 		default:
