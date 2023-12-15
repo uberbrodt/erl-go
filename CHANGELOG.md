@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.8.2] 2023-12-15
+
+### Removed
+
+- print statements in one of the port split functions
+
 ## [0.8.1] 2023-12-11
 
 ### Changed

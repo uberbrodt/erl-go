@@ -3,7 +3,6 @@ package port
 import (
 	"bufio"
 	"bytes"
-	"log"
 )
 
 var DecodeNULSplitFun = func(data []byte, atEOF bool) (advance int, token []byte, err error) {
@@ -24,7 +23,6 @@ var DecodeNULSplitFun = func(data []byte, atEOF bool) (advance int, token []byte
 
 func DecodeNumBytesSplitFun(num int) bufio.SplitFunc {
 	return func(data []byte, atEOF bool) (advance int, token []byte, err error) {
-		log.Printf("SplitFunc: %s:", string(data))
 		if atEOF && len(data) == 0 {
 			return 0, nil, nil
 		}
