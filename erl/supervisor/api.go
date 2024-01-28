@@ -24,6 +24,8 @@ func StartDefaultLink(self erl.PID, children []ChildSpec, supFlags SupFlagsS, op
 	return StartLink(self, ds, nil, optFuns...)
 }
 
+// Start a Supervisor. [args] will be passed to the [callback.Init] function along with the PID of the
+// supervisor process.
 func StartLink(self erl.PID, callback Supervisor, args any, optFuns ...LinkOpts) (erl.PID, error) {
 	opts := linkOpts{}
 
@@ -42,4 +44,7 @@ func StartLink(self erl.PID, callback Supervisor, args any, optFuns ...LinkOpts)
 	}
 
 	return genserver.StartLink[supervisorState](self, sup, args, gsOpts...)
+}
+
+func StartChild(supervisor erl.Dest, cs ChildSpec) {
 }
