@@ -66,6 +66,18 @@ func doConf[State any](opts ...GenSrvOpt[State]) *config[State] {
 	return conf
 }
 
+func SetName[State any](name erl.Name) GenSrvOpt[State] {
+	return func(c *config[State]) {
+		c.name = name
+	}
+}
+
+func SetStartTimeout[State any](tout time.Duration) GenSrvOpt[State] {
+	return func(c *config[State]) {
+		c.startTimeout = tout
+	}
+}
+
 func RegisterInit[State any](init func(self erl.PID, a any) (genserver.InitResult[State], error)) GenSrvOpt[State] {
 	return func(c *config[State]) {
 		c.initFun = init

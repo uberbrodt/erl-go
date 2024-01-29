@@ -1,7 +1,12 @@
 # Changelog
 
+## [0.9.1] 2024-01-29
 
-## [0.9.0] 2023-12-15
+### Added
+ - SetName and SetStartTimeout options to `gensrv` pkg.
+
+
+## [0.9.0] 2024-01-29
 
 ### Added
 - `gensrv` package, a wrapper around the `genserver` package
