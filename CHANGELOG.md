@@ -1,5 +1,11 @@
 # Changelog
 
+
+## [0.9.0] 2023-12-15
+
+### Added
+- `gensrv` package, a wrapper around the `genserver` package
+
 ## [0.8.2] 2023-12-15
 
 ### Removed
