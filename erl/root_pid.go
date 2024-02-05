@@ -18,7 +18,7 @@ func init() {
 
 type rootProc struct{}
 
-// TODO: What if he dies for some reason? Does he need a supervisor?
+// XXX: What if he dies for some reason? Does he need a supervisor?
 func (rp *rootProc) Receive(self PID, inbox <-chan any) error {
 	for anymsg := range inbox {
 		switch msg := anymsg.(type) {
