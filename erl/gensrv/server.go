@@ -42,7 +42,6 @@ func (s *CB[State]) HandleCall(self erl.PID, request any, from genserver.From, s
 	termT := reflect.TypeOf(request)
 	for matchTerm, callFun := range s.conf.callFuns {
 		if termT == matchTerm {
-			fmt.Println("found a castfun!")
 			return callFun(self, request, from, state)
 		}
 	}

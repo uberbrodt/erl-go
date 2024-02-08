@@ -80,11 +80,6 @@ func (p *Process) run() {
 		select {
 		// this happens when the Runnable exits
 		case exitReason := <-p.done:
-			if p.getName() != "" {
-				DebugPrintf("%v unregistering name: %s", p, p.getName())
-				Unregister(p.getName())
-
-			}
 			p.exit(exitReason)
 			return
 
@@ -151,10 +146,6 @@ func (p *Process) run() {
 					// can't trap Kill if it's sent to us, but if a linked process exited with reason Kill,
 					// then we can still trap the exit below
 					if errors.Is(sig.reason, exitreason.Kill) && !sig.link {
-						if p.getName() != "" {
-							DebugPrintf("%v unregistering name: %s", p.self(), p.getName())
-							Unregister(p.getName())
-						}
 						p.exit(sig.reason)
 						return
 					}
@@ -171,10 +162,6 @@ func (p *Process) run() {
 						if errors.Is(sig.reason, exitreason.Normal) && sig.link && !sig.sender.Equals(p.self()) {
 							continue
 						}
-						if p.getName() != "" {
-							DebugPrintf("%v unregistering name: %s", p, p.getName())
-							Unregister(p.getName())
-						}
 						p.exit(sig.reason)
 						return
 					}
@@ -186,6 +173,11 @@ func (p *Process) run() {
 }
 
 func (p *Process) exit(e error) {
+	if p.getName() != "" {
+		DebugPrintf("%v unregistering name: %s", p, p.getName())
+		Unregister(p.getName())
+
+	}
 	var exitReason *exitreason.S
 	if e == nil {
 		exitReason = exitreason.Normal

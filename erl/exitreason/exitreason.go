@@ -21,6 +21,8 @@ const (
 	brutalKill         = "brutal_kill"
 	ignore             = "ignore"
 	stopped            = "stopped"
+	// sent to testReceiver to cause it to stop
+	testExit = "test_exit"
 	// for empty reasons
 	none = "none"
 )
@@ -85,7 +87,8 @@ var (
 	// Untrappable exit signal.
 	Kill = &S{short: kill}
 	// The process stopped after replying to a Call
-	Stopped = &S{short: stopped}
+	Stopped  = &S{short: stopped}
+	TestExit = &S{short: testExit}
 )
 
 // Tests to see if error is or wraps a *S. If not, returns nil

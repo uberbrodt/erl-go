@@ -1,6 +1,7 @@
 package erl
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -17,7 +18,7 @@ func NewTestReceiver(t *testing.T) (PID, *TestReceiver) {
 
 	ProcessFlag(pid, TrapExit, true)
 	t.Cleanup(func() {
-		Exit(RootPID(), pid, exitreason.Kill)
+		Exit(RootPID(), pid, exitreason.TestExit)
 	})
 	return pid, tr
 }
@@ -33,6 +34,14 @@ func (tr *TestReceiver) Receive(self PID, inbox <-chan any) error {
 		case msg, ok := <-inbox:
 			if !ok {
 				return exitreason.Normal
+			}
+			switch v := msg.(type) {
+			case ExitMsg:
+				if errors.Is(v.Reason, exitreason.TestExit) {
+					// NOTE: don't log exitmsg, it will cause a panic
+					return exitreason.Normal
+				}
+				// default:
 			}
 			tr.t.Logf("TestReceiver got message: %#v", msg)
 			tr.c <- msg
@@ -63,8 +72,6 @@ func (tr *TestReceiver) LoopFor(tout time.Duration, handler func(msg any) bool) 
 			}
 
 		case <-time.After(tout):
-			// tr.t.Fatal("TestReceiver.Loop test timeout")
-			// close(th.c)
 
 			return exitreason.Timeout
 		}

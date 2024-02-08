@@ -12,7 +12,7 @@ func SetRestart(restart Restart) ChildSpecOpt {
 }
 
 func SetShutdown(shutdown ShutdownOpt) ChildSpecOpt {
-	// TODO: do some validatiuon to prevent nonsense shutdownopts
+	// TODO: do some validation to prevent nonsense shutdownopts
 	return func(cs ChildSpec) ChildSpec {
 		cs.Shutdown = shutdown
 		return cs

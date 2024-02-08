@@ -41,7 +41,7 @@ func Cast(gensrv erl.Dest, request any) error {
 		return exitreason.NoProc
 	}
 	erl.Send(pid, castRequest{term: request})
-	return fmt.Errorf("got request: %v", request)
+	return nil
 }
 
 func Call(self erl.PID, gensrv erl.Dest, request any, timeout time.Duration) (any, error) {

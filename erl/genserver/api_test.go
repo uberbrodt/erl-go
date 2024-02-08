@@ -146,7 +146,7 @@ func TestCast_ReturnsOKIfProcessExists(t *testing.T) {
 	receive := make(chan int, 1)
 	assert.NilError(t, err)
 
-	Cast(pid, taggedRequest{
+	result := Cast(pid, taggedRequest{
 		probe: func(self erl.PID, state TestGS) (newState TestGS) {
 			receive <- 1
 			return state
@@ -160,6 +160,7 @@ func TestCast_ReturnsOKIfProcessExists(t *testing.T) {
 		t.Fatalf("timed out waiting for probe response")
 
 	}
+	assert.NilError(t, result)
 }
 
 func TestCast_ReturnsErrorIfNameNotRegistered(t *testing.T) {
