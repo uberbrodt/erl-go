@@ -1,5 +1,18 @@
 # Changelog
 
+##[0.10.0] 2024-02-08
+
+### Added
+- exitreason.TestExit so testreceiver knows to shutdown
+
+### Changed
+- Removed errant logging statement
+- Refactored Process to move name unregistering to the `exit` method
+
+### Fixed
+- `genserver.Cast` always returned an error! It should only return an error
+  if an `erl.Name` is used and it is not registered.
+
 ## [0.9.1] 2024-01-29
 
 ### Added
