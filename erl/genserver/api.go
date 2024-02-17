@@ -32,7 +32,7 @@ func Start[STATE any](self erl.PID, callbackStruct GenServer[STATE], args any, o
 }
 
 func Reply(client From, reply any) {
-	erl.Send(client.caller, callReply{Status: OK, Term: reply}) // genCallerReply{reply: result.Reply})
+	erl.Send(client.caller, CallReply{Status: OK, Term: reply}) // genCallerReply{reply: result.Reply})
 }
 
 func Cast(gensrv erl.Dest, request any) error {
@@ -40,7 +40,7 @@ func Cast(gensrv erl.Dest, request any) error {
 	if err != nil {
 		return exitreason.NoProc
 	}
-	erl.Send(pid, castRequest{term: request})
+	erl.Send(pid, CastRequest{Msg: request})
 	return nil
 }
 
@@ -62,7 +62,7 @@ func Call(self erl.PID, gensrv erl.Dest, request any, timeout time.Duration) (an
 	select {
 	case msg := <-resp:
 		switch msgT := msg.(type) {
-		case callReply:
+		case CallReply:
 
 			if msgT.Status == Stopped {
 				return nil, exitreason.Stopped
@@ -150,23 +150,25 @@ func StopReason(e *exitreason.S) ExitOpt {
 	}
 }
 
-type callReturnStatus string
+type CallReturnStatus string
 
 const (
-	OK          callReturnStatus = "ok"
-	NoProc      callReturnStatus = "noproc"
-	Timeout     callReturnStatus = "timeout"
-	CallingSelf callReturnStatus = "calling_self"
+	OK          CallReturnStatus = "ok"
+	NoProc      CallReturnStatus = "noproc"
+	Timeout     CallReturnStatus = "timeout"
+	CallingSelf CallReturnStatus = "calling_self"
 	// supervisor stopped the GenServer
-	Shutdown callReturnStatus = "shutdown"
+	Shutdown CallReturnStatus = "shutdown"
 	// genserver returned [Stop] without a reply. There may be a reason
-	Stopped callReturnStatus = "normal_shutdown"
+	Stopped CallReturnStatus = "normal_shutdown"
 	// unhandled error happened.
-	Other callReturnStatus = "other"
+	Other CallReturnStatus = "other"
 )
 
-type callReply struct {
-	Status callReturnStatus
+// This is an intermediate response when invoking [Call]. Included here since it will
+// appear in process inboxes and so needs to be matched in [erl.TestReceiver]
+type CallReply struct {
+	Status CallReturnStatus
 	Term   any
 }
 

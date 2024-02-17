@@ -13,13 +13,18 @@ type From struct {
 	caller erl.PID
 	mref   erl.Ref
 }
-type callRequest struct {
-	from From
-	term any
+
+// intermediate message sent to [GenServerS] from [Call]. Not normally seen unless
+// the receiver process in [Call] is not a [GenServer]
+type CallRequest struct {
+	From From
+	Msg  any
 }
 
-type castRequest struct {
-	term any
+// intermediate message sent to [GenServerS] from [Cast]. Not normally seen unless
+// the receiver process in [Cast] is not a [GenServer]
+type CastRequest struct {
+	Msg any
 }
 
 type initAck struct {
@@ -129,12 +134,12 @@ func (gs *GenServerS[STATE]) Receive(self erl.PID, inbox <-chan any) error {
 			return nil
 		}
 		switch msgT := msg.(type) {
-		case callRequest:
+		case CallRequest:
 			if stop, err := gs.handleCallRequest(self, msgT); stop {
 				log.Printf("GenServer exited: %+v", err)
 				return err
 			}
-		case castRequest:
+		case CastRequest:
 			if err := gs.handleCastRequest(self, msgT); err != nil {
 				return err
 			}
@@ -216,20 +221,20 @@ func (gs *GenServerS[STATE]) handleInfoRequest(self erl.PID, msg any) error {
 	return nil
 }
 
-func (gs *GenServerS[STATE]) handleCallRequest(self erl.PID, msg callRequest) (bool, error) {
-	result, err := gs.callback.HandleCall(self, msg.term, msg.from, gs.state)
+func (gs *GenServerS[STATE]) handleCallRequest(self erl.PID, msg CallRequest) (bool, error) {
+	result, err := gs.callback.HandleCall(self, msg.Msg, msg.From, gs.state)
 
 	switch {
 	case err != nil:
 		if !result.NoReply {
-			erl.Send(msg.from.caller, callReply{Status: OK, Term: result.Msg})
+			erl.Send(msg.From.caller, CallReply{Status: OK, Term: result.Msg})
 		}
 		exit := exitreason.Wrap(err)
 		gs.callback.Terminate(self, exit, gs.state)
 		return true, exit
 
 	case !result.NoReply:
-		erl.Send(msg.from.caller, callReply{Status: OK, Term: result.Msg}) // genCallerReply{reply: result.Reply})
+		erl.Send(msg.From.caller, CallReply{Status: OK, Term: result.Msg}) // genCallerReply{reply: result.Reply})
 	default:
 		// do nothing
 	}
@@ -248,8 +253,8 @@ func (gs *GenServerS[STATE]) handleCallRequest(self erl.PID, msg callRequest) (b
 	return false, nil
 }
 
-func (gs *GenServerS[STATE]) handleCastRequest(self erl.PID, msg castRequest) error {
-	result, err := gs.callback.HandleCast(self, msg.term, gs.state)
+func (gs *GenServerS[STATE]) handleCastRequest(self erl.PID, msg CastRequest) error {
+	result, err := gs.callback.HandleCast(self, msg.Msg, gs.state)
 	if err != nil {
 		err = exitreason.Wrap(err)
 		gs.callback.Terminate(self, err, gs.state)

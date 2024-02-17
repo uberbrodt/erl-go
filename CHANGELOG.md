@@ -1,5 +1,16 @@
 # Changelog
 
+
+##[0.11.0] 2024-02-16
+
+### Changed
+- Made `genserver` `CastRequest`, `CallRequest`, and `CallReply` are public
+  types, and their properties have been made public as well. While I dislike a breaking
+  change that exposes some of the inside baseball, these structs can show up in
+  some situations for the enduser, if nothing else in `erl.TestReceiver` if you
+  have it stand-in for a GenServer.
+
+
 ##[0.10.0] 2024-02-08
 
 ### Added
