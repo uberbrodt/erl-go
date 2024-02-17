@@ -11,6 +11,8 @@ import (
 
 var testTimeout time.Duration = chronos.Dur("10s")
 
+// Deprecated: use [erltest.NewReceiver] as an alternative with the ability
+// to set message expectations
 func NewTestReceiver(t *testing.T) (PID, *TestReceiver) {
 	c := make(chan any, 50)
 	tr := &TestReceiver{c: c, t: t}

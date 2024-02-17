@@ -1,5 +1,19 @@
 # Changelog
 
+##[0.12.0] 2024-02-17
+
+### Changed
+- marked [erl.TestReceiver] as deprecated
+
+### Added
+- added the [erltest] package, which contains a new TestReceiver implementation
+  that allows for setting Expectations on messages that it will receive. The
+  following types of expectations can be set:
+   - Exactly N Times
+   - At Most N Times
+   - Any (or zero) Times
+   - At Least N Time
+   - Received As Nth message (Absolute)
 
 ##[0.11.0] 2024-02-16
 
