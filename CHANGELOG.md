@@ -1,5 +1,17 @@
 # Changelog
 
+##[0.15.0] 2024-02-18
+### Added
+#### erltest
+- `ExpectCast` and `ExpectCall` methods for better mocking of genserver Cast and
+  Call messages.
+- Added a `Stop` method to `TestReceiver`. Useful to test Exit/Down handling for
+  processes.
+
+### Fixed
+- don't log exit msgs at all in the test receivers. Related to very occasional
+  panics caused by logging in test receiver after the test goroutine has ended.
+
 ##[0.14.1] 2024-02-18
 ### Fixed
 - bug in `erltest.Times` where numbers greater than 1 would be marked as

@@ -37,15 +37,21 @@ func (tr *TestReceiver) Receive(self PID, inbox <-chan any) error {
 			if !ok {
 				return exitreason.Normal
 			}
+			var isXit bool
 			switch v := msg.(type) {
 			case ExitMsg:
+				isXit = true
 				if errors.Is(v.Reason, exitreason.TestExit) {
 					// NOTE: don't log exitmsg, it will cause a panic
 					return exitreason.Normal
 				}
 				// default:
 			}
-			tr.t.Logf("TestReceiver got message: %#v", msg)
+			// XXX: This is dumb. Race detector screeches if Logf is called outside of the test goroutine or
+			// after the test is over.
+			if !isXit {
+				tr.t.Logf("TestReceiver got message: %#v", msg)
+			}
 			tr.c <- msg
 		case <-time.After(testTimeout):
 			tr.t.Fatal("TestReceiver: test timeout")

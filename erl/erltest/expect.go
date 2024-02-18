@@ -4,9 +4,13 @@ import (
 	"reflect"
 
 	"github.com/uberbrodt/erl-go/erl"
+	"github.com/uberbrodt/erl-go/erl/genserver"
 )
 
-type TestExpectation func(self erl.PID, msg any) bool
+type (
+	TestExpectation     func(self erl.PID, msg any) bool
+	TestCallExpectation func(self erl.PID, from genserver.From, msg any) bool
+)
 
 type ExpectationFailure struct {
 	MatchType reflect.Type

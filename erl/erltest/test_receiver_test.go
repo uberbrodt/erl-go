@@ -1,4 +1,3 @@
-// tests our
 package erltest
 
 import (
@@ -9,6 +8,7 @@ import (
 
 	"github.com/uberbrodt/erl-go/erl"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
+	"github.com/uberbrodt/erl-go/erl/genserver"
 )
 
 type testMsg1 struct {
@@ -321,5 +321,85 @@ func TestErlTestReceiver_Times_PassesIfMet(t *testing.T) {
 	f, pass := tr.Pass()
 
 	assert.Assert(t, pass)
+	assert.Assert(t, f == 0)
+}
+
+func TestErlTestReceiver_CastExpect_FailsIfNotSatisifed(t *testing.T) {
+	testPID, tr := NewReceiver(t)
+	tr.noFail = true
+
+	tr.ExpectCast(testMsg1{}, func(self erl.PID, anymsg any) bool {
+		return true
+	}, Times(3))
+
+	erl.Send(testPID, testMsg1{foo: "bar"})
+	erl.Send(testPID, testMsg1{foo: "bar"})
+	erl.Send(testPID, testMsg1{foo: "bar"})
+
+	tr.WaitFor(time.Second * 1)
+
+	f, pass := tr.Pass()
+
+	assert.Assert(t, !pass)
+	assert.Assert(t, f == 0)
+}
+
+func TestErlTestReceiver_CastExpect_PassesIfMatched(t *testing.T) {
+	testPID, tr := NewReceiver(t)
+
+	tr.ExpectCast(testMsg1{}, func(self erl.PID, anymsg any) bool {
+		return true
+	}, Times(3))
+
+	genserver.Cast(testPID, testMsg1{foo: "bar"})
+	genserver.Cast(testPID, testMsg1{foo: "bar"})
+	genserver.Cast(testPID, testMsg1{foo: "bar"})
+
+	tr.WaitFor(time.Second * 1)
+
+	f, pass := tr.Pass()
+	assert.Assert(t, pass)
+	assert.Assert(t, f == 0)
+}
+
+func TestErlTestReceiver_CallExpect_PassesIfMatched(t *testing.T) {
+	self, _ := NewReceiver(t)
+	testPID, tr := NewReceiver(t)
+
+	tr.ExpectCall(testMsg1{}, func(self erl.PID, from genserver.From, anymsg any) bool {
+		t.Logf("Expectation called!")
+		genserver.Reply(from, "baz")
+		return true
+	})
+
+	reply, err := genserver.Call(self, testPID, testMsg1{foo: "bar"}, 5*time.Second)
+	assert.NilError(t, err)
+	assert.Assert(t, reply == "baz")
+
+	tr.WaitFor(time.Second * 1)
+
+	f, pass := tr.Pass()
+	assert.Assert(t, pass)
+	assert.Assert(t, f == 0)
+}
+
+func TestErlTestReceiver_CallExpect_FailsIfNotMatched(t *testing.T) {
+	self, _ := NewReceiver(t)
+	testPID, tr := NewReceiver(t)
+	tr.noFail = true
+
+	tr.ExpectCall(testMsg1{}, func(self erl.PID, from genserver.From, anymsg any) bool {
+		genserver.Reply(from, "baz")
+		return true
+	}, Times(2))
+
+	reply, err := genserver.Call(self, testPID, testMsg1{foo: "bar"}, 5*time.Second)
+	assert.NilError(t, err)
+	assert.Assert(t, reply == "baz")
+
+	tr.WaitFor(time.Second * 1)
+
+	f, pass := tr.Pass()
+	assert.Assert(t, !pass)
 	assert.Assert(t, f == 0)
 }
