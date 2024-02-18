@@ -5,8 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/uberbrodt/erl-go/erl"
 	"gotest.tools/v3/assert"
+
+	"github.com/uberbrodt/erl-go/erl"
+	"github.com/uberbrodt/erl-go/erl/exitreason"
 )
 
 type testMsg1 struct {
@@ -222,4 +224,40 @@ func TestReceiver_AtLeast_FailsIfNotAtTimes(t *testing.T) {
 	f, pass := tr.Pass()
 	assert.Assert(t, !pass)
 	assert.Assert(t, f == 0)
+}
+
+func TestReceiver_AtLeast_MatchesExitMsg(t *testing.T) {
+	testPID, tr := NewReceiver(t)
+	tr.noFail = true
+
+	tr.Expect(erl.ExitMsg{}, func(self erl.PID, anymsg any) bool {
+		return true
+	}, AtLeast(2))
+
+	erl.Exit(testPID, testPID, exitreason.Normal)
+	// erl.Send(testPID, testMsg1{foo: "bar"})
+
+	tr.WaitFor(time.Second)
+
+	f, pass := tr.Pass()
+	assert.Assert(t, !pass)
+	assert.Assert(t, f == 0)
+}
+
+func TestReceiver_TestExpectationPanick_ReturnsFailure(t *testing.T) {
+	testPID, tr := NewReceiver(t)
+	tr.noFail = true
+
+	tr.Expect(erl.ExitMsg{}, func(self erl.PID, anymsg any) bool {
+		panic("whatever man")
+	}, AtLeast(2))
+
+	erl.Exit(testPID, testPID, exitreason.Normal)
+	erl.Exit(testPID, testPID, exitreason.Normal)
+	// erl.Send(testPID, testMsg1{foo: "bar"})
+
+	tr.WaitFor(time.Second)
+	f, pass := tr.Pass()
+	assert.Assert(t, !pass)
+	assert.Assert(t, f > 0)
 }

@@ -94,7 +94,16 @@ func (tr *TestReceiver) check(msg any) {
 	}
 }
 
-func (tr *TestReceiver) doCheck(match reflect.Type, msg any, ex *expectation) *ExpectationFailure {
+func (tr *TestReceiver) doCheck(match reflect.Type, msg any, ex *expectation) (failure *ExpectationFailure) {
+	defer func() {
+		if r := recover(); r != nil {
+			failure = &ExpectationFailure{
+				MatchType: match,
+				Msg:       msg,
+				Reason:    fmt.Sprintf("TestExpectation panicked!: %+v", r),
+			}
+		}
+	}()
 	ex.matchCnt = ex.matchCnt + 1
 
 	// look for failures
@@ -146,7 +155,7 @@ func (tr *TestReceiver) doCheck(match reflect.Type, msg any, ex *expectation) *E
 		ex.satisfied = ex.matchCnt >= ex.opts.times
 	}
 
-	return nil
+	return failure
 }
 
 // Set an expectation that will be matched whenever an [expected] msg type is received.
