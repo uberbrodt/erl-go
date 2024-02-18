@@ -254,10 +254,72 @@ func TestReceiver_TestExpectationPanick_ReturnsFailure(t *testing.T) {
 
 	erl.Exit(testPID, testPID, exitreason.Normal)
 	erl.Exit(testPID, testPID, exitreason.Normal)
-	// erl.Send(testPID, testMsg1{foo: "bar"})
 
 	tr.WaitFor(time.Second)
 	f, pass := tr.Pass()
 	assert.Assert(t, !pass)
 	assert.Assert(t, f > 0)
+}
+
+func TestErlTestReceiver_Times_FailsIfLessThan(t *testing.T) {
+	testPID, tr := NewReceiver(t)
+	tr.noFail = true
+
+	tr.Expect(testMsg1{}, func(self erl.PID, anymsg any) bool {
+		return true
+	}, Times(4))
+
+	erl.Send(testPID, testMsg1{foo: "bar"})
+	erl.Send(testPID, testMsg1{foo: "bar"})
+	erl.Send(testPID, testMsg1{foo: "bar"})
+
+	tr.WaitFor(time.Second * 1)
+
+	f, pass := tr.Pass()
+
+	assert.Assert(t, !pass)
+	assert.Assert(t, f == 0)
+}
+
+func TestErlTestReceiver_Times_FailsIfGreaterThan(t *testing.T) {
+	testPID, tr := NewReceiver(t)
+	tr.noFail = true
+
+	tr.Expect(testMsg1{}, func(self erl.PID, anymsg any) bool {
+		return true
+	}, Times(4))
+
+	erl.Send(testPID, testMsg1{foo: "bar"})
+	erl.Send(testPID, testMsg1{foo: "bar"})
+	erl.Send(testPID, testMsg1{foo: "bar"})
+	erl.Send(testPID, testMsg1{foo: "bar"})
+	erl.Send(testPID, testMsg1{foo: "bar"})
+
+	tr.WaitFor(time.Second * 1)
+
+	f, pass := tr.Pass()
+
+	assert.Assert(t, !pass)
+	assert.Assert(t, f == 1)
+	assert.Equal(t, tr.failures[0].Reason, "expected to match 4 times, but match count is now: 5")
+}
+
+func TestErlTestReceiver_Times_PassesIfMet(t *testing.T) {
+	testPID, tr := NewReceiver(t)
+
+	tr.Expect(testMsg1{}, func(self erl.PID, anymsg any) bool {
+		return true
+	}, Times(4))
+
+	erl.Send(testPID, testMsg1{foo: "bar"})
+	erl.Send(testPID, testMsg1{foo: "bar"})
+	erl.Send(testPID, testMsg1{foo: "bar"})
+	erl.Send(testPID, testMsg1{foo: "bar"})
+
+	tr.WaitFor(time.Second * 1)
+
+	f, pass := tr.Pass()
+
+	assert.Assert(t, pass)
+	assert.Assert(t, f == 0)
 }

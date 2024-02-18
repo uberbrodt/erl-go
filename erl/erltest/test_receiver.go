@@ -118,7 +118,8 @@ func (tr *TestReceiver) doCheck(match reflect.Type, msg any, ex *expectation) (f
 			}
 		}
 	case exact:
-		if ex.matchCnt != ex.opts.times {
+		if ex.matchCnt > ex.opts.times {
+			ex.satisfied = false
 			return &ExpectationFailure{
 				MatchType: match,
 				Msg:       msg,
