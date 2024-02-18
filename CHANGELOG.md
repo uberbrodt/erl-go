@@ -1,5 +1,9 @@
 # Changelog
 
+##[0.14.1] 2024-02-18
+### Fixed
+- bug in `erltest.Times` where numbers greater than 1 would be marked as
+  failures, even if the exact count was reached.
 
 ##[0.14.0] 2024-02-18
 
