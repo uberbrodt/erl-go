@@ -1,5 +1,16 @@
 # Changelog
 
+
+##[0.14.0] 2024-02-18
+
+### Added
+ - `check` package that contains assertions that do not call `t.Test.FailNow()`,
+   which must not be called outside of a test goroutine.
+
+### Fixed
+- `TestReceiver` killed if a `TestExpectation` panicked. Fixed.
+
+
 ##[0.12.0] 2024-02-17
 
 ### Changed
