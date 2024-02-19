@@ -20,3 +20,4 @@
 - [ ] support new slog for erl logger
 - [ ] support custom crash reporter.
 - [x] make sure recurringtask handles panics in the initFun and taskFun
+- [ ] BUG: genserver handlers need to recover from panic and call terminate

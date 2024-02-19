@@ -49,7 +49,7 @@ func TestErlTestReceiver_ExpectAbsolute(t *testing.T) {
 }
 
 func TestErlTestReceiver_FailsIfAbsoluteOutOfOrder(t *testing.T) {
-	testPID, tr := NewReceiver(t)
+	testPID, tr := NewReceiver(t, WaitTimeout(time.Second))
 	tr.noFail = true
 
 	tr.Expect(testMsg2{}, func(self erl.PID, anymsg any) bool {
@@ -63,7 +63,7 @@ func TestErlTestReceiver_FailsIfAbsoluteOutOfOrder(t *testing.T) {
 	erl.Send(testPID, testMsg2{foo: "bar2"})
 	erl.Send(testPID, testMsg1{foo: "bar"})
 
-	tr.WaitFor(time.Second * 1)
+	tr.Wait()
 
 	f, pass := tr.Pass()
 
@@ -152,7 +152,7 @@ func TestReceiver_AtMost_PassesIfAtLimit(t *testing.T) {
 }
 
 func TestReceiver_AtMost_FailsIfOverLimit(t *testing.T) {
-	testPID, tr := NewReceiver(t)
+	testPID, tr := NewReceiver(t, WaitTimeout(2*time.Second))
 	tr.noFail = true
 
 	tr.Expect(testMsg1{}, func(self erl.PID, anymsg any) bool {
@@ -172,7 +172,7 @@ func TestReceiver_AtMost_FailsIfOverLimit(t *testing.T) {
 
 	failCnt, pass := tr.Pass()
 	assert.Assert(t, failCnt == 1)
-	assert.Assert(t, pass)
+	assert.Assert(t, !pass)
 	assert.Equal(t, tr.failures[0].Reason, "expected to match at most 3 times, but match count is now: 4")
 }
 
@@ -210,7 +210,7 @@ func TestReceiver_AtLeast_PassesIfGreaterThanTimes(t *testing.T) {
 }
 
 func TestReceiver_AtLeast_FailsIfNotAtTimes(t *testing.T) {
-	testPID, tr := NewReceiver(t)
+	testPID, tr := NewReceiver(t, WaitTimeout(time.Second))
 	tr.noFail = true
 
 	tr.Expect(testMsg1{}, func(self erl.PID, anymsg any) bool {
@@ -219,15 +219,13 @@ func TestReceiver_AtLeast_FailsIfNotAtTimes(t *testing.T) {
 
 	erl.Send(testPID, testMsg1{foo: "bar"})
 
-	tr.WaitFor(time.Second)
-
 	f, pass := tr.Pass()
 	assert.Assert(t, !pass)
 	assert.Assert(t, f == 0)
 }
 
 func TestReceiver_AtLeast_MatchesExitMsg(t *testing.T) {
-	testPID, tr := NewReceiver(t)
+	testPID, tr := NewReceiver(t, WaitTimeout(time.Second))
 	tr.noFail = true
 
 	tr.Expect(erl.ExitMsg{}, func(self erl.PID, anymsg any) bool {
@@ -237,7 +235,7 @@ func TestReceiver_AtLeast_MatchesExitMsg(t *testing.T) {
 	erl.Exit(testPID, testPID, exitreason.Normal)
 	// erl.Send(testPID, testMsg1{foo: "bar"})
 
-	tr.WaitFor(time.Second)
+	tr.Wait()
 
 	f, pass := tr.Pass()
 	assert.Assert(t, !pass)
@@ -245,7 +243,7 @@ func TestReceiver_AtLeast_MatchesExitMsg(t *testing.T) {
 }
 
 func TestReceiver_TestExpectationPanick_ReturnsFailure(t *testing.T) {
-	testPID, tr := NewReceiver(t)
+	testPID, tr := NewReceiver(t, WaitTimeout(time.Second))
 	tr.noFail = true
 
 	tr.Expect(erl.ExitMsg{}, func(self erl.PID, anymsg any) bool {
@@ -255,14 +253,15 @@ func TestReceiver_TestExpectationPanick_ReturnsFailure(t *testing.T) {
 	erl.Exit(testPID, testPID, exitreason.Normal)
 	erl.Exit(testPID, testPID, exitreason.Normal)
 
-	tr.WaitFor(time.Second)
+	tr.Wait()
+
 	f, pass := tr.Pass()
 	assert.Assert(t, !pass)
 	assert.Assert(t, f > 0)
 }
 
 func TestErlTestReceiver_Times_FailsIfLessThan(t *testing.T) {
-	testPID, tr := NewReceiver(t)
+	testPID, tr := NewReceiver(t, WaitTimeout(time.Second))
 	tr.noFail = true
 
 	tr.Expect(testMsg1{}, func(self erl.PID, anymsg any) bool {
@@ -273,7 +272,7 @@ func TestErlTestReceiver_Times_FailsIfLessThan(t *testing.T) {
 	erl.Send(testPID, testMsg1{foo: "bar"})
 	erl.Send(testPID, testMsg1{foo: "bar"})
 
-	tr.WaitFor(time.Second * 1)
+	tr.Wait()
 
 	f, pass := tr.Pass()
 
@@ -282,7 +281,7 @@ func TestErlTestReceiver_Times_FailsIfLessThan(t *testing.T) {
 }
 
 func TestErlTestReceiver_Times_FailsIfGreaterThan(t *testing.T) {
-	testPID, tr := NewReceiver(t)
+	testPID, tr := NewReceiver(t, WaitTimeout(time.Second))
 	tr.noFail = true
 
 	tr.Expect(testMsg1{}, func(self erl.PID, anymsg any) bool {
@@ -295,7 +294,7 @@ func TestErlTestReceiver_Times_FailsIfGreaterThan(t *testing.T) {
 	erl.Send(testPID, testMsg1{foo: "bar"})
 	erl.Send(testPID, testMsg1{foo: "bar"})
 
-	tr.WaitFor(time.Second * 1)
+	tr.Wait()
 
 	f, pass := tr.Pass()
 
@@ -305,7 +304,7 @@ func TestErlTestReceiver_Times_FailsIfGreaterThan(t *testing.T) {
 }
 
 func TestErlTestReceiver_Times_PassesIfMet(t *testing.T) {
-	testPID, tr := NewReceiver(t)
+	testPID, tr := NewReceiver(t, WaitTimeout(time.Second))
 
 	tr.Expect(testMsg1{}, func(self erl.PID, anymsg any) bool {
 		return true
@@ -316,7 +315,7 @@ func TestErlTestReceiver_Times_PassesIfMet(t *testing.T) {
 	erl.Send(testPID, testMsg1{foo: "bar"})
 	erl.Send(testPID, testMsg1{foo: "bar"})
 
-	tr.WaitFor(time.Second * 1)
+	tr.Wait()
 
 	f, pass := tr.Pass()
 
@@ -324,8 +323,47 @@ func TestErlTestReceiver_Times_PassesIfMet(t *testing.T) {
 	assert.Assert(t, f == 0)
 }
 
+func TestErlTestReceiver_TimesZero_PassesIfMet(t *testing.T) {
+	testPID, tr := NewReceiver(t, WaitTimeout(time.Second))
+
+	tr.Expect(testMsg1{}, func(self erl.PID, anymsg any) bool {
+		return true
+	}, Times(0))
+
+	erl.Send(testPID, testMsg2{foo: "bar"})
+	erl.Send(testPID, testMsg2{foo: "bar"})
+	// erl.Send(testPID, testMsg1{foo: "bar"})
+	// erl.Send(testPID, testMsg1{foo: "bar"})
+
+	tr.Wait()
+
+	f, pass := tr.Pass()
+
+	assert.Assert(t, pass)
+	assert.Assert(t, f == 0)
+}
+
+func TestErlTestReceiver_TimesZero_FailsIfMatched(t *testing.T) {
+	testPID, tr := NewReceiver(t, WaitTimeout(time.Second))
+	tr.noFail = true
+
+	tr.Expect(testMsg1{}, func(self erl.PID, anymsg any) bool {
+		return true
+	}, Times(0))
+
+	erl.Send(testPID, testMsg2{foo: "bar"})
+	erl.Send(testPID, testMsg1{foo: "bar"})
+
+	tr.Wait()
+
+	f, pass := tr.Pass()
+
+	assert.Assert(t, !pass)
+	assert.Assert(t, f == 1)
+}
+
 func TestErlTestReceiver_CastExpect_FailsIfNotSatisifed(t *testing.T) {
-	testPID, tr := NewReceiver(t)
+	testPID, tr := NewReceiver(t, WaitTimeout(time.Second))
 	tr.noFail = true
 
 	tr.ExpectCast(testMsg1{}, func(self erl.PID, anymsg any) bool {
@@ -336,7 +374,7 @@ func TestErlTestReceiver_CastExpect_FailsIfNotSatisifed(t *testing.T) {
 	erl.Send(testPID, testMsg1{foo: "bar"})
 	erl.Send(testPID, testMsg1{foo: "bar"})
 
-	tr.WaitFor(time.Second * 1)
+	tr.Wait()
 
 	f, pass := tr.Pass()
 
@@ -345,7 +383,7 @@ func TestErlTestReceiver_CastExpect_FailsIfNotSatisifed(t *testing.T) {
 }
 
 func TestErlTestReceiver_CastExpect_PassesIfMatched(t *testing.T) {
-	testPID, tr := NewReceiver(t)
+	testPID, tr := NewReceiver(t, WaitTimeout(time.Second))
 
 	tr.ExpectCast(testMsg1{}, func(self erl.PID, anymsg any) bool {
 		return true
@@ -355,7 +393,7 @@ func TestErlTestReceiver_CastExpect_PassesIfMatched(t *testing.T) {
 	genserver.Cast(testPID, testMsg1{foo: "bar"})
 	genserver.Cast(testPID, testMsg1{foo: "bar"})
 
-	tr.WaitFor(time.Second * 1)
+	tr.Wait()
 
 	f, pass := tr.Pass()
 	assert.Assert(t, pass)
@@ -364,7 +402,7 @@ func TestErlTestReceiver_CastExpect_PassesIfMatched(t *testing.T) {
 
 func TestErlTestReceiver_CallExpect_PassesIfMatched(t *testing.T) {
 	self, _ := NewReceiver(t)
-	testPID, tr := NewReceiver(t)
+	testPID, tr := NewReceiver(t, WaitTimeout(2*time.Second))
 
 	tr.ExpectCall(testMsg1{}, func(self erl.PID, from genserver.From, anymsg any) bool {
 		t.Logf("Expectation called!")
@@ -376,7 +414,7 @@ func TestErlTestReceiver_CallExpect_PassesIfMatched(t *testing.T) {
 	assert.NilError(t, err)
 	assert.Assert(t, reply == "baz")
 
-	tr.WaitFor(time.Second * 1)
+	tr.Wait()
 
 	f, pass := tr.Pass()
 	assert.Assert(t, pass)
@@ -385,7 +423,7 @@ func TestErlTestReceiver_CallExpect_PassesIfMatched(t *testing.T) {
 
 func TestErlTestReceiver_CallExpect_FailsIfNotMatched(t *testing.T) {
 	self, _ := NewReceiver(t)
-	testPID, tr := NewReceiver(t)
+	testPID, tr := NewReceiver(t, WaitTimeout(time.Second))
 	tr.noFail = true
 
 	tr.ExpectCall(testMsg1{}, func(self erl.PID, from genserver.From, anymsg any) bool {
@@ -397,7 +435,7 @@ func TestErlTestReceiver_CallExpect_FailsIfNotMatched(t *testing.T) {
 	assert.NilError(t, err)
 	assert.Assert(t, reply == "baz")
 
-	tr.WaitFor(time.Second * 1)
+	tr.Wait()
 
 	f, pass := tr.Pass()
 	assert.Assert(t, !pass)

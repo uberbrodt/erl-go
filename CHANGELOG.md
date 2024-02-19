@@ -1,5 +1,24 @@
 # Changelog
 
+##[0.16.0-rc.0] 2024-02-19
+Updates to `erltest`
+
+### Added
+- `Never()` expectation option.
+- `erltest.Expectation`, which exposed the `Check()` and `Satisified()` methods.
+  This will allow for wrapping of `TestReceiver` and adding sub-checks of
+  matching messages.
+
+### Changed
+- Added `erltest.ReceiverOpt` to configure timeouts
+- `erltest.AtMost` will cause `TestReceiver.Wait()` to always wait until
+  WaitTimeout is exceeded.
+
+
+### Removed
+- `TestReceiver.WaitFor()` was replaced by the `WaitTimeout` option to the
+  receiver.
+
 ##[0.15.0] 2024-02-18
 ### Added
 #### erltest
