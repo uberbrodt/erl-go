@@ -30,6 +30,7 @@ type ReceiverOpt func(ro receiverOptions) receiverOptions
 type receiverOptions struct {
 	timeout     time.Duration
 	waitTimeout time.Duration
+	noFail      bool
 }
 
 // Specify how long the test reciever should run for before stopping.
@@ -51,6 +52,15 @@ func WaitTimeout(t time.Duration) ReceiverOpt {
 	}
 }
 
+// Set this if you do not want the TestReceiver to call [testing.T.Fail] in
+// the [Wait] method.
+func NoFail() ReceiverOpt {
+	return func(ro receiverOptions) receiverOptions {
+		ro.noFail = true
+		return ro
+	}
+}
+
 // Creates a new TestReceiver, which is a process that you can set
 // message matching expectations on.
 func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
@@ -61,10 +71,14 @@ func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 	for _, o := range opts {
 		rOpts = o(rOpts)
 	}
-	expectations := make(map[reflect.Type]*Expectation)
-	castExpects := make(map[reflect.Type]*Expectation)
-	callExpects := make(map[reflect.Type]*Expectation)
-	tr := &TestReceiver{t: t, expectations: expectations, castExpects: castExpects, callExpects: callExpects, opts: rOpts}
+	expectations := make(map[reflect.Type]Expectation)
+	castExpects := make(map[reflect.Type]Expectation)
+	callExpects := make(map[reflect.Type]Expectation)
+	allExpects := make(map[string]Expectation)
+	tr := &TestReceiver{
+		t: t, msgExpects: expectations, castExpects: castExpects, callExpects: callExpects,
+		opts: rOpts, noFail: rOpts.noFail, allExpects: allExpects,
+	}
 	pid := erl.Spawn(tr)
 
 	erl.ProcessFlag(pid, erl.TrapExit, true)
@@ -76,9 +90,11 @@ func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 
 type TestReceiver struct {
 	t            *testing.T
-	expectations map[reflect.Type]*Expectation
-	castExpects  map[reflect.Type]*Expectation
-	callExpects  map[reflect.Type]*Expectation
+	msgExpects   map[reflect.Type]Expectation
+	castExpects  map[reflect.Type]Expectation
+	callExpects  map[reflect.Type]Expectation
+	extraExpects []Expectation
+	allExpects   map[string]Expectation
 	failures     []*ExpectationFailure
 	msgCnt       int
 	self         erl.PID
@@ -131,7 +147,7 @@ func (tr *TestReceiver) check(msg any) {
 		for match, ex := range tr.castExpects {
 			if castMsgT == match {
 				// pass in the unwrapped message
-				fail := tr.checkMatch(match, v.Msg, ex)
+				fail := tr.checkMatch(match, v.Msg, nil, ex)
 				if fail != nil {
 					tr.failures = append(tr.failures, fail)
 				}
@@ -142,11 +158,11 @@ func (tr *TestReceiver) check(msg any) {
 		for match, ex := range tr.callExpects {
 			if callMsgT == match {
 				// wrap our callHandle so we don't have to rewrite doCheck
-				ex.h = func(self erl.PID, msg any) bool {
-					return ex.callHandle(self, v.From, msg)
-				}
+				// ex.h = func(self erl.PID, msg any) bool {
+				// 	return ex.callHandle(self, v.From, msg)
+				// }
 				// pass in the unwrapped message
-				fail := tr.checkMatch(match, v.Msg, ex)
+				fail := tr.checkMatch(match, v.Msg, &v.From, ex)
 				if fail != nil {
 					tr.failures = append(tr.failures, fail)
 				}
@@ -154,9 +170,9 @@ func (tr *TestReceiver) check(msg any) {
 		}
 	default:
 		msgT := reflect.TypeOf(msg)
-		for match, ex := range tr.expectations {
+		for match, ex := range tr.msgExpects {
 			if msgT == match {
-				fail := tr.checkMatch(match, msg, ex)
+				fail := tr.checkMatch(match, msg, nil, ex)
 				if fail != nil {
 					tr.failures = append(tr.failures, fail)
 				}
@@ -166,29 +182,45 @@ func (tr *TestReceiver) check(msg any) {
 	}
 }
 
-func (tr *TestReceiver) checkMatch(match reflect.Type, msg any, ex *Expectation) (failure *ExpectationFailure) {
-	arg := ExpectArg{Match: match, Msg: msg, Self: tr.self, MsgCount: tr.msgCnt}
-	return ex.Check(arg)
+func (tr *TestReceiver) checkMatch(match reflect.Type, msg any, from *genserver.From, ex Expectation) (failure *ExpectationFailure) {
+	arg := ExpectArg{Match: match, Msg: msg, Self: tr.self, MsgCount: tr.msgCnt, From: from}
+	if nextEx, fail := ex.Check(arg); fail != nil {
+		return fail
+	} else if nextEx != nil {
+		return tr.checkMatch(match, msg, from, nextEx)
+	} else {
+		return nil
+	}
 }
 
-// Set an expectation that will be matched whenever an [expected] msg type is received.
-func (tr *TestReceiver) Expect(expected any, handler TestExpectation, opts ...ExpectOpt) {
-	t := reflect.TypeOf(expected)
-	tr.expectations[t] = NewExpectation(handler, opts...)
+func (tr *TestReceiver) WaitOn(e ...Expectation) {
+	for _, ex := range e {
+		tr.allExpects[ex.ID()] = ex
+	}
+	// tr.extraExpects = append(tr.extraExpects, e...)
+}
+
+// Set an expectation that will be matched whenever a [matchTerm] msg type is received.
+func (tr *TestReceiver) Expect(matchTerm any, e Expectation) {
+	t := reflect.TypeOf(matchTerm)
+	tr.allExpects[e.ID()] = e
+	tr.msgExpects[t] = e
 }
 
 // This is like [Expect] but is only tested against [genserver.CastRequest] messages.
-func (tr *TestReceiver) ExpectCast(expected any, handler TestExpectation, opts ...ExpectOpt) {
-	t := reflect.TypeOf(expected)
-	tr.castExpects[t] = NewExpectation(handler, opts...)
+func (tr *TestReceiver) ExpectCast(matchTerm any, e Expectation) {
+	t := reflect.TypeOf(matchTerm)
+	tr.allExpects[e.ID()] = e
+	tr.castExpects[t] = e
 }
 
 // This is like [Expect] but is only tested against [genserver.CallRequest] messages.
 // NOTE: You should use [genserver.Reply] to send a response to the [genserver.From], otherwise
 // the caller will timeout
-func (tr *TestReceiver) ExpectCall(expected any, handler TestCallExpectation, opts ...ExpectOpt) {
-	t := reflect.TypeOf(expected)
-	tr.callExpects[t] = NewCallExpectation(handler, opts...)
+func (tr *TestReceiver) ExpectCall(matchTerm any, e Expectation) {
+	t := reflect.TypeOf(matchTerm)
+	tr.allExpects[e.ID()] = e
+	tr.callExpects[t] = e
 }
 
 // returns the number of failed expectations and whether
@@ -197,22 +229,22 @@ func (tr *TestReceiver) ExpectCall(expected any, handler TestCallExpectation, op
 func (tr *TestReceiver) Pass() (int, bool) {
 	tr.mx.RLock()
 	defer tr.mx.RUnlock()
-	expects := maps.Values(tr.expectations)
-	castExpects := maps.Values(tr.castExpects)
-	callExpects := maps.Values(tr.callExpects)
-	reducer := func(list []*Expectation) bool {
-		return fun.Reduce(list, true, func(v *Expectation, acc bool) bool {
-			tr.t.Logf("checking %s times: %d matchCnt: %d is satisifed: %t", v.opts.exType, v.opts.times, v.matchCnt, v.satisfied)
+	expects := maps.Values(tr.allExpects)
+	// castExpects := maps.Values(tr.castExpects)
+	// callExpects := maps.Values(tr.callExpects)
+	reducer := func(list []Expectation) bool {
+		return fun.Reduce(list, true, func(v Expectation, acc bool) bool {
 			if !acc {
 				return acc
 			}
 
-			return v.Satisified(tr.testEnded)
+			tr.t.Logf("checking if %v is satisfied", v)
+			return v.Satisfied(tr.testEnded)
 		})
 	}
 
-	// pass := check.Chain(tr.t, reducer(expects), reducer(castExpects), reducer(callExpects))
-	return len(tr.failures), reducer(expects) && reducer(castExpects) && reducer(callExpects)
+	// return len(tr.failures), reducer(expects) && reducer(castExpects) && reducer(callExpects) && reducer(tr.extraExpects)
+	return len(tr.failures), reducer(expects)
 }
 
 func (tr *TestReceiver) finish() bool {
@@ -263,4 +295,14 @@ func (tr *TestReceiver) Wait() {
 // processes. This is not needed for normal test cleanup (that is handled via [t.Cleanup()])
 func (tr *TestReceiver) Stop(self erl.PID) {
 	erl.Exit(self, tr.self, exitreason.TestExit)
+}
+
+func (tr *TestReceiver) Failures() []*ExpectationFailure {
+	return tr.failures
+}
+
+// return the [*testing.T]. Don't use this in situations that could run after a
+// test is failed, the race detector doesn't like that.
+func (tr *TestReceiver) T() *testing.T {
+	return tr.t
 }
