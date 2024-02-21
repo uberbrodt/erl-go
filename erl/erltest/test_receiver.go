@@ -231,8 +231,12 @@ func (tr *TestReceiver) Pass() (int, bool) {
 				return acc
 			}
 
-			tr.t.Logf("checking if %v is satisfied", v)
-			return v.Satisfied(tr.testEnded)
+			// tr.t.Logf("checking if %v is satisfied", v)
+			ok := v.Satisfied(tr.testEnded)
+			if !ok && tr.testEnded {
+				tr.t.Logf("%v is not satisfied", v)
+			}
+			return ok
 		})
 	}
 
