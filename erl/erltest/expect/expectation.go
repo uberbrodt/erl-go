@@ -13,6 +13,7 @@ type Expectation struct {
 	satisfied bool
 	id        string
 	children  []*Expectation
+	name      string
 }
 
 // Returns true if this and all joined exceptions are satisifed,
@@ -107,8 +108,17 @@ func (ex *Expectation) Check(arg erltest.ExpectArg) (next erltest.Expectation, f
 	return next, failure
 }
 
+func (ex *Expectation) Name() string {
+	return ex.name
+}
+
 func (ex *Expectation) String() string {
-	return fmt.Sprintf("Expectation{type: %s, expected_times: %d, matches: %d, satisfied: %t, satisifed(end-of-test): %t}",
+	name := ex.name
+	if ex.name == "" {
+		name = ex.id
+	}
+	return fmt.Sprintf("Expectation[%s]{type: %s, expected_times: %d, matches: %d, satisfied: %t, satisifed(end-of-test): %t}",
+		name,
 		ex.opts.exType,
 		ex.opts.times,
 		ex.matchCnt,

@@ -563,8 +563,8 @@ func TestErlTestReciver_ChainedExpect(t *testing.T) {
 
 	chainedExpect := expect.Equals(t, barMsg)
 
-	expectMsg1 := expect.Called()
-	expectMsg2 := expect.Called()
+	expectMsg1 := expect.Called(expect.Name("TestMsg1"))
+	expectMsg2 := expect.Called(expect.Name("TestMsg2"))
 	expectMsg2.And(chainedExpect)
 
 	tr.ExpectCast(testMsg1{}, expectMsg1)

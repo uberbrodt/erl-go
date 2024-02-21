@@ -6,6 +6,7 @@ type expectOpts struct {
 	times  int
 	exType exType
 	tr     *erltest.TestReceiver
+	name   string
 }
 
 type exType string
@@ -85,6 +86,14 @@ func Never() ExpectOpt {
 func Receiver(tr *erltest.TestReceiver) ExpectOpt {
 	return func(o expectOpts) expectOpts {
 		o.tr = tr
+		return o
+	}
+}
+
+// Set a name that will identify the Expectation in error reports and logs
+func Name(name string) ExpectOpt {
+	return func(o expectOpts) expectOpts {
+		o.name = name
 		return o
 	}
 }

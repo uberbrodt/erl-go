@@ -32,12 +32,14 @@ func new(te Handle, opts expectOpts) *Expectation {
 		id:        xid.New().String(),
 		h:         te,
 		opts:      opts,
+		name:      opts.name,
 		satisfied: opts.exType == anyTimes,
 	}
 
 	if opts.tr != nil {
 		opts.tr.WaitOn(ex)
 	}
+
 	return ex
 }
 
