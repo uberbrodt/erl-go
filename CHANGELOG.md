@@ -1,5 +1,23 @@
 # Changelog
 
+
+##[0.16.0-rc.2] 2024-02-21
+
+### Changed
+- cleanup expectation to use [Fail] method
+- rename expect.NewExpectation to expect.New
+- add And() method and check children expectations in Satisifed()
+- Change ExpectationFailure.MatchType to Match
+- renamed [expect.Simple] to [expect.Expect]
+
+
+##[0.16.0-rc.1] 2024-02-21
+
+### Changed
+- Refactored expects pkg out of erltest
+- A system is now in place to use "nested expectations" by means of
+  "attaching" to a test receiver
+
 ##[0.16.0-rc.0] 2024-02-19
 Updates to `erltest`
 
