@@ -2,7 +2,6 @@ package erltest
 
 import (
 	"fmt"
-	"reflect"
 
 	"github.com/uberbrodt/erl-go/erl"
 	"github.com/uberbrodt/erl-go/erl/genserver"
@@ -16,7 +15,7 @@ type (
 type ExpectArg struct {
 	// The term that was matched against. A simple type in the case of [reflect.Type], or
 	// possibly a string, number, etc.
-	Match reflect.Type
+	Match any
 	Msg   any
 	// This is only populated for Calls
 	From     *genserver.From
@@ -41,11 +40,14 @@ type Expectation interface {
 }
 
 type ExpectationFailure struct {
-	// TODO: remove
-	MatchType reflect.Type
-	Exp       Expectation
-	Msg       any
-	Reason    string
+	// The matching term that led to the ExpectationFailure
+	Match any
+	// The failed expectation
+	Exp Expectation
+	// The actual message that matched [Match] and was evaluated by the Expectation
+	Msg any
+	// Failure message
+	Reason string
 }
 
 func (ef *ExpectationFailure) String() string {

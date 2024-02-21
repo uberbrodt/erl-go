@@ -89,15 +89,14 @@ func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 }
 
 type TestReceiver struct {
-	t            *testing.T
-	msgExpects   map[reflect.Type]Expectation
-	castExpects  map[reflect.Type]Expectation
-	callExpects  map[reflect.Type]Expectation
-	extraExpects []Expectation
-	allExpects   map[string]Expectation
-	failures     []*ExpectationFailure
-	msgCnt       int
-	self         erl.PID
+	t           *testing.T
+	msgExpects  map[reflect.Type]Expectation
+	castExpects map[reflect.Type]Expectation
+	callExpects map[reflect.Type]Expectation
+	allExpects  map[string]Expectation
+	failures    []*ExpectationFailure
+	msgCnt      int
+	self        erl.PID
 	// if set to true, t.FailNow will not be called in [Pass] or [Wait]
 	noFail    bool
 	mx        sync.RWMutex
@@ -157,11 +156,6 @@ func (tr *TestReceiver) check(msg any) {
 		callMsgT := reflect.TypeOf(v.Msg)
 		for match, ex := range tr.callExpects {
 			if callMsgT == match {
-				// wrap our callHandle so we don't have to rewrite doCheck
-				// ex.h = func(self erl.PID, msg any) bool {
-				// 	return ex.callHandle(self, v.From, msg)
-				// }
-				// pass in the unwrapped message
 				fail := tr.checkMatch(match, v.Msg, &v.From, ex)
 				if fail != nil {
 					tr.failures = append(tr.failures, fail)
@@ -193,11 +187,12 @@ func (tr *TestReceiver) checkMatch(match reflect.Type, msg any, from *genserver.
 	}
 }
 
+// Register an expectation wit this TestReciever. It will be checked
+// when Pass is called (and as a consequnce, cause [Wait] to block until its success)
 func (tr *TestReceiver) WaitOn(e ...Expectation) {
 	for _, ex := range e {
 		tr.allExpects[ex.ID()] = ex
 	}
-	// tr.extraExpects = append(tr.extraExpects, e...)
 }
 
 // Set an expectation that will be matched whenever a [matchTerm] msg type is received.
@@ -230,8 +225,6 @@ func (tr *TestReceiver) Pass() (int, bool) {
 	tr.mx.RLock()
 	defer tr.mx.RUnlock()
 	expects := maps.Values(tr.allExpects)
-	// castExpects := maps.Values(tr.castExpects)
-	// callExpects := maps.Values(tr.callExpects)
 	reducer := func(list []Expectation) bool {
 		return fun.Reduce(list, true, func(v Expectation, acc bool) bool {
 			if !acc {
@@ -243,7 +236,6 @@ func (tr *TestReceiver) Pass() (int, bool) {
 		})
 	}
 
-	// return len(tr.failures), reducer(expects) && reducer(castExpects) && reducer(callExpects) && reducer(tr.extraExpects)
 	return len(tr.failures), reducer(expects)
 }
 
@@ -254,9 +246,8 @@ func (tr *TestReceiver) finish() bool {
 		defer tr.mx.Unlock()
 		tr.t.Logf("TestReceiver %s, had %d expectation failures\r", tr.self, fails)
 		for i, f := range tr.failures {
-			tr.t.Logf("Failure %d: [Reason: %s] [MatchType: %+v] [Msg: %+v]", i, f.Reason, f.MatchType, f.Msg)
+			tr.t.Logf("Failure %d: [Reason: %s] [Match: %v] [Msg: %+v]", i, f.Reason, f.Match, f.Msg)
 		}
-		// tr.t.Logf("Failures: %+v", tr.failures)
 		if !tr.noFail {
 			tr.t.FailNow()
 		} else {
