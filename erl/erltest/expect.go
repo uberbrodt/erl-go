@@ -37,6 +37,7 @@ type Expectation interface {
 	Satisfied(testDone bool) bool
 	// unique identifier, to simplify nested Expectation registration with the [TestReceiver]
 	ID() string
+	Name() string
 }
 
 type ExpectationFailure struct {

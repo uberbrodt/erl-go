@@ -177,7 +177,7 @@ func (tr *TestReceiver) check(msg any) {
 }
 
 func (tr *TestReceiver) checkMatch(match reflect.Type, msg any, from *genserver.From, ex Expectation) (failure *ExpectationFailure) {
-	arg := ExpectArg{Match: match, Msg: msg, Self: tr.self, MsgCount: tr.msgCnt, From: from}
+	arg := ExpectArg{Match: match, Exp: ex, Msg: msg, Self: tr.self, MsgCount: tr.msgCnt, From: from}
 	if nextEx, fail := ex.Check(arg); fail != nil {
 		return fail
 	} else if nextEx != nil {
@@ -243,22 +243,22 @@ func (tr *TestReceiver) Pass() (int, bool) {
 	return len(tr.failures), reducer(expects)
 }
 
-func (tr *TestReceiver) finish() bool {
+func (tr *TestReceiver) finish() (done bool, failed bool) {
 	fails, passed := tr.Pass()
 	if fails > 0 {
 		tr.mx.Lock()
 		defer tr.mx.Unlock()
 		tr.t.Logf("TestReceiver %s, had %d expectation failures\r", tr.self, fails)
 		for i, f := range tr.failures {
-			tr.t.Logf("Failure %d: [Reason: %s] [Match: %v] [Msg: %+v]", i, f.Reason, f.Match, f.Msg)
+			tr.t.Logf("Failure %d: [Expect: %s] [Reason: %s] [Match: %v] [Msg: %+v]", i, f.Exp.Name(), f.Reason, f.Match, f.Msg)
 		}
 		if !tr.noFail {
 			tr.t.FailNow()
 		} else {
-			return false
+			return false, true
 		}
 	}
-	return passed
+	return passed, false
 }
 
 // Returns when the [WaitTimeout] expires or an expectation fails. If at the end of the timeout not
@@ -270,7 +270,7 @@ func (tr *TestReceiver) Wait() {
 		if time.Since(now) > tr.opts.waitTimeout {
 			tr.t.Logf("test ended, checking expectations a final time")
 			tr.testEnded = true
-			passed := tr.finish()
+			passed, _ := tr.finish()
 			if !tr.noFail && !passed {
 				tr.t.Fatal("TestReceiver.Loop test timeout")
 			}
@@ -278,8 +278,11 @@ func (tr *TestReceiver) Wait() {
 		}
 
 		// no failures and all passed, return so test ends
-		passed := tr.finish()
+		passed, failed := tr.finish()
 		if passed {
+			return
+		}
+		if failed {
 			return
 		}
 		time.Sleep(time.Millisecond)

@@ -577,3 +577,20 @@ func TestErlTestReciver_ChainedExpect(t *testing.T) {
 
 	assert.Assert(t, chainedExpect.Satisfied(true))
 }
+
+func TestErlTestReceiver_CallExpect_ReturnFailure(t *testing.T) {
+	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(time.Second), erltest.NoFail())
+	tr.ExpectCast(testMsg1{}, expect.New(func(arg erltest.ExpectArg) (erltest.Expectation, *erltest.ExpectationFailure) {
+		return nil, erltest.Fail(arg, "Didn't like that!")
+	}, expect.Name("FooBar Check")))
+
+	genserver.Cast(testPID, testMsg1{foo: "bar"})
+
+	tr.Wait()
+
+	f, pass := tr.Pass()
+
+	assert.Assert(t, !pass)
+	assert.Equal(t, f, 1)
+	assert.Equal(t, tr.Failures()[0].Exp.Name(), "FooBar Check")
+}
