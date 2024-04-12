@@ -100,12 +100,26 @@ type TestReceiver struct {
 	// if set to true, t.FailNow will not be called in [Pass] or [Wait]
 	noFail    bool
 	mx        sync.RWMutex
+	selfmx    sync.RWMutex
 	testEnded bool
 	opts      receiverOptions
 }
 
+func (tr *TestReceiver) getSelf() erl.PID {
+	defer tr.selfmx.RUnlock()
+	tr.selfmx.RLock()
+	return tr.self
+}
+
+func (tr *TestReceiver) setSelf(pid erl.PID) {
+	defer tr.selfmx.Unlock()
+	tr.selfmx.Lock()
+	tr.self = pid
+}
+
 func (tr *TestReceiver) Receive(self erl.PID, inbox <-chan any) error {
-	tr.self = self
+	tr.setSelf(self)
+	// tr.self = self
 	for {
 		select {
 		case msg, ok := <-inbox:
@@ -177,7 +191,7 @@ func (tr *TestReceiver) check(msg any) {
 }
 
 func (tr *TestReceiver) checkMatch(match reflect.Type, msg any, from *genserver.From, ex Expectation) (failure *ExpectationFailure) {
-	arg := ExpectArg{Match: match, Exp: ex, Msg: msg, Self: tr.self, MsgCount: tr.msgCnt, From: from}
+	arg := ExpectArg{Match: match, Exp: ex, Msg: msg, Self: tr.getSelf(), MsgCount: tr.msgCnt, From: from}
 	if nextEx, fail := ex.Check(arg); fail != nil {
 		return fail
 	} else if nextEx != nil {
@@ -248,7 +262,7 @@ func (tr *TestReceiver) finish() (done bool, failed bool) {
 	if fails > 0 {
 		tr.mx.Lock()
 		defer tr.mx.Unlock()
-		tr.t.Logf("TestReceiver %s, had %d expectation failures\r", tr.self, fails)
+		tr.t.Logf("TestReceiver %s, had %d expectation failures\r", tr.getSelf(), fails)
 		for i, f := range tr.failures {
 			tr.t.Logf("Failure %d: [Expect: %s] [Reason: %s] [Match: %v] [Msg: %+v]", i, f.Exp.Name(), f.Reason, f.Match, f.Msg)
 		}
@@ -292,7 +306,7 @@ func (tr *TestReceiver) Wait() {
 // will cause the test receiver to exit, sending signals to linked and monitoring
 // processes. This is not needed for normal test cleanup (that is handled via [t.Cleanup()])
 func (tr *TestReceiver) Stop(self erl.PID) {
-	erl.Exit(self, tr.self, exitreason.TestExit)
+	erl.Exit(self, tr.getSelf(), exitreason.TestExit)
 }
 
 func (tr *TestReceiver) Failures() []*ExpectationFailure {
