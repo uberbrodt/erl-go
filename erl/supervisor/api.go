@@ -1,10 +1,9 @@
 package supervisor
 
 import (
-	"time"
-
 	"github.com/uberbrodt/erl-go/erl"
 	"github.com/uberbrodt/erl-go/erl/genserver"
+	"github.com/uberbrodt/erl-go/erl/timeout"
 )
 
 type linkOpts struct {
@@ -39,10 +38,7 @@ func StartLink(self erl.PID, callback Supervisor, args any, optFuns ...LinkOpts)
 		gsOpts = append(gsOpts, genserver.SetName(opts.name))
 	}
 
-	// XXX: to follow spec, we should wait infinitely for a supervisor to start. In practice
-	// setting this value to a year's worth of hours should be "functionally infinite" for our
-	// purposes.
-	gsOpts = append(gsOpts, genserver.SetStartTimeout(time.Hour*8766))
+	gsOpts = append(gsOpts, genserver.SetStartTimeout(timeout.Infinity))
 
 	sup := SupervisorS{
 		callback: callback,
