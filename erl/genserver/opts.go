@@ -60,3 +60,10 @@ func SetName(name erl.Name) StartOpt {
 		return opts
 	}
 }
+
+func SetStartTimeout(tout time.Duration) StartOpt {
+	return func(opts StartOpts) StartOpts {
+		opts.SetStartTimeout(tout)
+		return opts
+	}
+}

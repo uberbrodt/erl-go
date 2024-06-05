@@ -3,6 +3,8 @@
 .PHONY: clean build test test-integration coverage-report test-watch view-docs format check-tools check ci help
 
 TEST_ARG ?= ./...
+version_file := VERSION
+VERSION := $(shell cat ${version_file})
 
 ifdef GOOS
 GOOS := $(GOOS)
@@ -32,6 +34,12 @@ clean:
 build:
 	GOOS=$(GOOS) go build ./...
 
+#################################################################################
+#@ release: release the app, including anything that needs to be generated
+#################################################################################
+release:
+	@echo $(VERSION)
+	gh release create v$(VERSION) --generate-notes
 
 #################################################################################
 #@ test: runs all tests.
