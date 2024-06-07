@@ -42,6 +42,13 @@ release:
 	gh release create v$(VERSION) --generate-notes
 
 #################################################################################
+#@ pre-release: same as relase, but mark as draft
+#################################################################################
+pre-release:
+	@echo $(VERSION)
+	gh release create v$(VERSION) --generate-notes --draft
+
+#################################################################################
 #@ test: runs all tests.
 #################################################################################
 test: check-tools
