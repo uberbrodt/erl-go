@@ -21,10 +21,10 @@ type (
 	notifyTestReceiver struct{}
 )
 
-var initFn = RegisterInit[testState](func(self erl.PID, arg any) (genserver.InitResult[testState], error) {
+var initFn = RegisterInit[testState](func(self erl.PID, arg any) (testState, any, error) {
 	startSum := arg.(int)
 
-	return genserver.InitResult[testState]{State: testState{sum: startSum}}, nil
+	return testState{sum: startSum}, nil, nil
 })
 
 var addFn = func(self erl.PID, a any, state testState) (newState testState, continu any, err error) {
@@ -56,8 +56,8 @@ var subCastNotify = RegisterCast[testState](sub(0), func(self erl.PID, a any, st
 	return state, notifyTestReceiver{}, nil
 })
 
-var sumCall = RegisterCall[testState](getSum{},
-	func(self erl.PID, request any, from genserver.From, state testState) (genserver.CallResult[testState], error) {
+var sumCall = RegisterCall(getSum{},
+	func(self erl.PID, request getSum, from genserver.From, state testState) (genserver.CallResult[testState], error) {
 		return genserver.CallResult[testState]{Msg: state.sum, State: state}, nil
 	})
 

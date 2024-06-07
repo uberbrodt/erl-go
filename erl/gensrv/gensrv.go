@@ -78,37 +78,53 @@ func SetStartTimeout[State any](tout time.Duration) GenSrvOpt[State] {
 	}
 }
 
-func RegisterInit[State any](init func(self erl.PID, a any) (genserver.InitResult[State], error)) GenSrvOpt[State] {
+func RegisterInit[State any, Arg any](init func(self erl.PID, arg Arg) (State, any, error)) GenSrvOpt[State] {
 	return func(c *config[State]) {
-		c.initFun = init
+		c.initFun = func(self erl.PID, a any) (genserver.InitResult[State], error) {
+			msg := a.(Arg)
+			s, c, err := init(self, msg)
+			return genserver.InitResult[State]{Continue: c, State: s}, err
+		}
 	}
 }
 
-func RegisterCast[State any](matchType any, fn func(self erl.PID, a any, state State) (newState State, continu any, err error)) GenSrvOpt[State] {
+func RegisterCast[State any, Msg any](matchType any, fn func(self erl.PID, a Msg, state State) (newState State, continu any, err error)) GenSrvOpt[State] {
 	return func(c *config[State]) {
 		termT := reflect.TypeOf(matchType)
-		c.castFuns[termT] = fn
+		c.castFuns[termT] = func(self erl.PID, m any, s State) (newState State, continu any, err error) {
+			msg := m.(Msg)
+			return fn(self, msg, s)
+		}
 	}
 }
 
-func RegisterInfo[State any](matchType any, fn func(self erl.PID, a any, state State) (newState State, continu any, err error)) GenSrvOpt[State] {
+func RegisterInfo[State any, Msg any](matchType any, fn func(self erl.PID, a Msg, state State) (newState State, continu any, err error)) GenSrvOpt[State] {
 	return func(c *config[State]) {
 		termT := reflect.TypeOf(matchType)
-		c.infoFuns[termT] = fn
+		c.infoFuns[termT] = func(self erl.PID, m any, s State) (newState State, continu any, err error) {
+			msg := m.(Msg)
+			return fn(self, msg, s)
+		}
 	}
 }
 
-func RegisterCall[State any](matchType any, fn func(self erl.PID, request any, from genserver.From, state State) (result genserver.CallResult[State], err error)) GenSrvOpt[State] {
+func RegisterCall[State any, Msg any](matchType any, fn func(self erl.PID, request Msg, from genserver.From, state State) (result genserver.CallResult[State], err error)) GenSrvOpt[State] {
 	return func(c *config[State]) {
 		termT := reflect.TypeOf(matchType)
-		c.callFuns[termT] = fn
+		c.callFuns[termT] = func(self erl.PID, m any, f genserver.From, s State) (result genserver.CallResult[State], err error) {
+			msg := m.(Msg)
+			return fn(self, msg, f, s)
+		}
 	}
 }
 
-func RegisterContinue[State any](matchType any, fn func(self erl.PID, cont any, state State) (newState State, continu any, err error)) GenSrvOpt[State] {
+func RegisterContinue[State any, Msg any](matchType any, fn func(self erl.PID, cont Msg, state State) (newState State, continu any, err error)) GenSrvOpt[State] {
 	return func(c *config[State]) {
 		termT := reflect.TypeOf(matchType)
-		c.continueFuns[termT] = fn
+		c.continueFuns[termT] = func(self erl.PID, m any, s State) (newState State, continu any, err error) {
+			msg := m.(Msg)
+			return fn(self, msg, s)
+		}
 	}
 }
 
