@@ -1,6 +1,29 @@
 # Changelog
 
 
+##[0.16.1] 2024-07-31
+
+
+This moves [gensrv] and the [erltest] pkgs into a stable release. We're still
+not to a 1.x release yet, but these interfaces should be pretty stable.
+
+### Changed
+- `erl.Exit` no longer panics if the self or target are not running.
+
+##[0.16.0-rc.8] 2024-06-06
+
+### Changed
+- make gensrv handlers cast free.
+
+### Changed
+- cleanup expectation to use [Fail] method
+- rename expect.NewExpectation to expect.New
+- add And() method and check children expectations in Satisifed()
+- Change ExpectationFailure.MatchType to Match
+- renamed [expect.Simple] to [expect.Expect]
+
+
+
 ##[0.16.0-rc.2] 2024-02-21
 
 ### Changed

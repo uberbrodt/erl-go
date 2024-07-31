@@ -209,9 +209,6 @@ func ProcessFlag(self PID, flag ProcFlag, value any) {
 }
 
 func Exit(self PID, pid PID, reason *exitreason.S) {
-	if self.IsNil() || pid.IsNil() {
-		panic("Exit: pids cannot be nil")
-	}
 	es := exitSignal{sender: self, receiver: pid, reason: reason}
 
 	pid.p.send(es)
