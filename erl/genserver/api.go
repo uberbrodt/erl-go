@@ -21,7 +21,7 @@ func StartMonitor[STATE any](self erl.PID, callbackStruct GenServer[STATE], args
 	return result.pid, result.monref, result.err
 }
 
-// Like [startLink], but no link is created.
+// Like [StartLink], but no link is created.
 
 // The [self] PID is required because the [GenServer] will notify it when [Init] is
 // completed and will also call [Terminate] if the parent exits and the GenServer is

@@ -46,7 +46,7 @@ release:
 #################################################################################
 pre-release:
 	@echo $(VERSION)
-	gh release create v$(VERSION) --generate-notes --draft
+	gh release create v$(VERSION) --generate-notes --prerelease
 
 #################################################################################
 #@ test: runs all tests.

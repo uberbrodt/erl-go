@@ -10,10 +10,10 @@ var DecodeNULSplitFun = func(data []byte, atEOF bool) (advance int, token []byte
 		return 0, nil, nil
 	}
 	if i := bytes.IndexByte(data, '\000'); i >= 0 {
-		// We have a full newline-terminated line.
+		// We have a full null-terminated line.
 		return i + 1, data[0:i], nil
 	}
-	// If we're at EOF, we have a final, non-terminated line. Return it.
+	// If we're at EOF, we have a final, null-terminated line. Return it.
 	if atEOF {
 		return len(data), data, nil
 	}
