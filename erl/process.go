@@ -248,7 +248,14 @@ func (p *Process) trapExits() bool {
 }
 
 func (p *Process) getStatus() processStatus {
-	defer p.statusMutex.RUnlock()
+	defer func() {
+		if p != nil {
+			p.statusMutex.RUnlock()
+		}
+	}()
+	if p == nil {
+		return exited
+	}
 	p.statusMutex.RLock()
 	return p._status
 }
