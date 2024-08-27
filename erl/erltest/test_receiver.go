@@ -175,7 +175,7 @@ func (tr *TestReceiver) Receive(self erl.PID, inbox <-chan any) error {
 			case erl.ExitMsg:
 				tr.exiting = true
 				if errors.Is(v.Reason, exitreason.TestExit) {
-					// NOTE: don't log exitmsg, it will cause a panic
+					tr.log.Info("recieved a TestExit, shutting down", "reason", v.Reason, "sending-proc", v.Proc)
 					return exitreason.Normal
 				}
 			}
@@ -185,7 +185,7 @@ func (tr *TestReceiver) Receive(self erl.PID, inbox <-chan any) error {
 			tr.check(msg)
 			tr.mx.Unlock()
 		case <-time.After(tr.opts.timeout):
-			tr.t.Error("TestReceiver: test timeout")
+			tr.safeTError("TestReceiver: test timeout")
 
 			return exitreason.Timeout
 		}
@@ -286,7 +286,6 @@ func (tr *TestReceiver) Pass() (int, bool) {
 				return acc
 			}
 
-			// tr.t.Logf("checking if %v is satisfied", v)
 			ok := v.Satisfied(tr.testEnded)
 			if !ok && tr.testEnded {
 				tr.safeTLogf("%v is not satisfied", v)
