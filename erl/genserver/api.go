@@ -240,6 +240,8 @@ func doStart[STATE any](self erl.PID, start startType, callbackStruct GenServer[
 		return startRet{pid: pid, err: ack.err, monref: monref}
 
 	case <-time.After(finalOpts.GetStartTimeout()):
+		// TODO: need to wait until exit messages are delivered to know if the process
+		// name was released
 		erl.Exit(self, pid, exitreason.Kill)
 		return startRet{pid: pid, err: exitreason.Timeout, monref: monref}
 	}

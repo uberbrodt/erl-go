@@ -106,7 +106,7 @@ func (gs *GenServerS[STATE]) Receive(self erl.PID, inbox <-chan any) error {
 			// we unregister the name now, because while the underyling process will
 			// unregister the name before the links/monitors are sent, the StartLink/Start call
 			// could return before then.
-			erl.DebugPrintf("GenServer[%v] got InitStop from init Callback: %v", self, initReturn)
+			erl.DebugPrintf("GenServer[%v] returned an error from init Callback: %v", self, initReturn)
 			gs.unregisterName()
 			err = exitreason.Wrap(err)
 			gs.initAckChan <- initAck{err: err}
@@ -144,7 +144,7 @@ func (gs *GenServerS[STATE]) Receive(self erl.PID, inbox <-chan any) error {
 				return err
 			}
 		case erl.ExitMsg:
-			erl.DebugPrintf("%v got ExitMsg with reason %s from process %+v", self, msgT.Reason, msgT.Proc)
+			erl.DebugPrintf("GenServer[%v] got ExitMsg with reason %s from process %+v", self, msgT.Reason, msgT.Proc)
 			if msgT.Proc.Equals(gs.parent) {
 				erl.DebugPrintf("GenServer[%v] ExitMsg is from parent link, terminating", self)
 				gs.callback.Terminate(self, msgT.Reason, gs.state)
@@ -190,6 +190,8 @@ func (gs *GenServerS[STATE]) doContinue(self erl.PID, inCont any, inState STATE)
 	cont := inCont
 	var contErr error
 
+	// handlers can return continues in a sort of chain, so follow it until
+	// we get an error or a simple return
 	for {
 		s, cont, contErr = gs.callback.HandleContinue(self, cont, s)
 		if contErr != nil {

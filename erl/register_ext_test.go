@@ -13,7 +13,6 @@ import (
 )
 
 func TestRegistration_ReRegisterName(t *testing.T) {
-	erl.SetDebugLog(true)
 	name := erl.Name("my_pid")
 	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
 
