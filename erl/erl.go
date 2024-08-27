@@ -178,8 +178,20 @@ func SendAfter(pid PID, term any, tout time.Duration) TimerRef {
 }
 
 func sendSignal(pid PID, signal Signal) {
+	// if process isn't alive, pid.p may be nil
 	if pid != UndefinedPID && !pid.IsNil() {
 		pid.p.send(signal)
+	} else {
+		// if the process is dead we reply with exit/down msgs as needed. All other messages are ignored
+		switch sig := signal.(type) {
+		case linkSignal:
+			sig.pid.p.send(exitSignal{sender: pid, receiver: sig.pid, reason: exitreason.NoProc, link: true})
+		case monitorSignal:
+			sig.monitor.p.send(downSignal{proc: pid, ref: sig.ref, reason: exitreason.NoProc})
+		default:
+			// just ignore
+
+		}
 	}
 }
 
