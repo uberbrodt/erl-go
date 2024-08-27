@@ -261,21 +261,21 @@ func (p *Process) getStatus() processStatus {
 }
 
 func (p *Process) setStatus(newStatus processStatus) {
-	defer p.statusMutex.Unlock()
 	p.statusMutex.Lock()
+	defer p.statusMutex.Unlock()
 
 	p._status = newStatus
 }
 
 func (p *Process) getName() Name {
-	defer p.nameMutex.RUnlock()
 	p.nameMutex.RLock()
+	defer p.nameMutex.RUnlock()
 	return p._name
 }
 
 func (p *Process) setName(name Name) {
-	defer p.nameMutex.Unlock()
 	p.nameMutex.Lock()
+	defer p.nameMutex.Unlock()
 
 	p._name = name
 }
