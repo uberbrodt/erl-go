@@ -6,11 +6,14 @@ package erltest
 
 import (
 	"errors"
+	"fmt"
+	"log/slog"
 	"reflect"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/rs/xid"
 	"github.com/uberbrodt/fungo/fun"
 	"golang.org/x/exp/maps"
 
@@ -31,6 +34,8 @@ type receiverOptions struct {
 	timeout     time.Duration
 	waitTimeout time.Duration
 	noFail      bool
+	name        string
+	logger      *slog.Logger
 }
 
 // Specify how long the test reciever should run for before stopping.
@@ -61,12 +66,29 @@ func NoFail() ReceiverOpt {
 	}
 }
 
+// Set a name for the test receiver, that will be used in log messages
+func Name(name string) ReceiverOpt {
+	return func(ro receiverOptions) receiverOptions {
+		ro.name = name
+		return ro
+	}
+}
+
+// XXX: might remove.
+func SetLogger(logger *slog.Logger) ReceiverOpt {
+	return func(ro receiverOptions) receiverOptions {
+		ro.logger = logger
+		return ro
+	}
+}
+
 // Creates a new TestReceiver, which is a process that you can set
 // message matching expectations on.
 func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 	rOpts := receiverOptions{
 		timeout:     DefaultReceiverTimeout,
 		waitTimeout: DefaultWaitTimeout,
+		name:        fmt.Sprintf("%s-test-receiver", xid.New().String()),
 	}
 	for _, o := range opts {
 		rOpts = o(rOpts)
@@ -75,14 +97,21 @@ func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 	castExpects := make(map[reflect.Type]Expectation)
 	callExpects := make(map[reflect.Type]Expectation)
 	allExpects := make(map[string]Expectation)
+
 	tr := &TestReceiver{
 		t: t, msgExpects: expectations, castExpects: castExpects, callExpects: callExpects,
 		opts: rOpts, noFail: rOpts.noFail, allExpects: allExpects,
+	}
+	if rOpts.logger != nil {
+		tr.log = rOpts.logger
+	} else {
+		tr.log = slog.With("erltest.test-receiver", rOpts.name)
 	}
 	pid := erl.Spawn(tr)
 
 	erl.ProcessFlag(pid, erl.TrapExit, true)
 	t.Cleanup(func() {
+		tr.log.Info("shutting down...")
 		erl.Exit(erl.RootPID(), pid, exitreason.TestExit)
 	})
 	return pid, tr
@@ -103,6 +132,8 @@ type TestReceiver struct {
 	selfmx    sync.RWMutex
 	testEnded bool
 	opts      receiverOptions
+	exiting   bool
+	log       *slog.Logger
 }
 
 func (tr *TestReceiver) getSelf() erl.PID {
@@ -117,6 +148,20 @@ func (tr *TestReceiver) setSelf(pid erl.PID) {
 	tr.self = pid
 }
 
+// only log if the test isn't existing or ended.
+func (tr *TestReceiver) safeTLogf(format string, args ...any) {
+	if !tr.exiting {
+		prefix := fmt.Sprintf("[TestReceiver: %s|PID: %+v]: %s", tr.opts.name, tr.getSelf(), format)
+		tr.t.Logf(prefix, args...)
+	}
+}
+
+// log and mark the test as failed
+func (tr *TestReceiver) safeTError(format string, args ...any) {
+	prefix := fmt.Sprintf("[TestReceiver: %s|PID: %+v]: %s", tr.opts.name, tr.getSelf(), format)
+	tr.t.Errorf(prefix, args...)
+}
+
 func (tr *TestReceiver) Receive(self erl.PID, inbox <-chan any) error {
 	tr.setSelf(self)
 	// tr.self = self
@@ -126,25 +171,21 @@ func (tr *TestReceiver) Receive(self erl.PID, inbox <-chan any) error {
 			if !ok {
 				return exitreason.Normal
 			}
-			var isXit bool
 			switch v := msg.(type) {
 			case erl.ExitMsg:
-				isXit = true
+				tr.exiting = true
 				if errors.Is(v.Reason, exitreason.TestExit) {
 					// NOTE: don't log exitmsg, it will cause a panic
 					return exitreason.Normal
 				}
 			}
-			// XXX: This is dumb. Race detector screeches if Logf is called outside of the test goroutine or
-			// after the test is over.
-			if !isXit {
-				tr.t.Logf("TestReceiver got message: %#v", msg)
-			}
+			tr.safeTLogf("TestReceiver got message: %#v", msg)
+
 			tr.mx.Lock()
 			tr.check(msg)
 			tr.mx.Unlock()
 		case <-time.After(tr.opts.timeout):
-			tr.t.Fatal("TestReceiver: test timeout")
+			tr.t.Error("TestReceiver: test timeout")
 
 			return exitreason.Timeout
 		}
@@ -201,7 +242,7 @@ func (tr *TestReceiver) checkMatch(match reflect.Type, msg any, from *genserver.
 	}
 }
 
-// Register an expectation wit this TestReciever. It will be checked
+// Register an expectation with this TestReciever. It will be checked
 // when Pass is called (and as a consequnce, cause [Wait] to block until its success)
 func (tr *TestReceiver) WaitOn(e ...Expectation) {
 	for _, ex := range e {
@@ -248,7 +289,7 @@ func (tr *TestReceiver) Pass() (int, bool) {
 			// tr.t.Logf("checking if %v is satisfied", v)
 			ok := v.Satisfied(tr.testEnded)
 			if !ok && tr.testEnded {
-				tr.t.Logf("%v is not satisfied", v)
+				tr.safeTLogf("%v is not satisfied", v)
 			}
 			return ok
 		})
@@ -262,12 +303,12 @@ func (tr *TestReceiver) finish() (done bool, failed bool) {
 	if fails > 0 {
 		tr.mx.Lock()
 		defer tr.mx.Unlock()
-		tr.t.Logf("TestReceiver %s, had %d expectation failures\r", tr.getSelf(), fails)
+		tr.safeTLogf("%d expectation failures\r", fails)
 		for i, f := range tr.failures {
-			tr.t.Logf("Failure %d: [Expect: %s] [Reason: %s] [Match: %v] [Msg: %+v]", i, f.Exp.Name(), f.Reason, f.Match, f.Msg)
+			tr.safeTLogf("Failure %d: [Expect: %s] [Reason: %s] [Match: %v] [Msg: %+v]", i, f.Exp.Name(), f.Reason, f.Match, f.Msg)
 		}
 		if !tr.noFail {
-			tr.t.FailNow()
+			tr.t.Fail()
 		} else {
 			return false, true
 		}
@@ -282,11 +323,11 @@ func (tr *TestReceiver) Wait() {
 	now := time.Now()
 	for {
 		if time.Since(now) > tr.opts.waitTimeout {
-			tr.t.Logf("test ended, checking expectations a final time")
+			tr.safeTLogf("test ended, checking expectations a final time")
 			tr.testEnded = true
 			passed, _ := tr.finish()
 			if !tr.noFail && !passed {
-				tr.t.Fatal("TestReceiver.Loop test timeout")
+				tr.safeTError("Wait(): timeout reached")
 			}
 			return
 		}
