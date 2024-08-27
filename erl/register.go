@@ -61,8 +61,8 @@ func Register(name Name, pid PID) *RegistrationError {
 }
 
 func WhereIs(name Name) (pid PID, exists bool) {
-	defer registrationMutex.RUnlock()
 	registrationMutex.RLock()
+	defer registrationMutex.RUnlock()
 
 	pid, exists = names[name]
 	return
