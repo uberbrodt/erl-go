@@ -164,7 +164,6 @@ func (tr *TestReceiver) safeTError(format string, args ...any) {
 
 func (tr *TestReceiver) Receive(self erl.PID, inbox <-chan any) error {
 	tr.setSelf(self)
-	// tr.self = self
 	for {
 		select {
 		case msg, ok := <-inbox:
@@ -175,17 +174,17 @@ func (tr *TestReceiver) Receive(self erl.PID, inbox <-chan any) error {
 			case erl.ExitMsg:
 				tr.exiting = true
 				if errors.Is(v.Reason, exitreason.TestExit) {
-					tr.log.Info("recieved a TestExit, shutting down", "reason", v.Reason, "sending-proc", v.Proc)
+					tr.log.Info("received a TestExit, shutting down", "reason", v.Reason, "sending-proc", v.Proc)
 					return exitreason.Normal
 				}
 			}
-			tr.safeTLogf("TestReceiver got message: %#v", msg)
+			tr.safeTLogf("got message: %#v", msg)
 
 			tr.mx.Lock()
 			tr.check(msg)
 			tr.mx.Unlock()
 		case <-time.After(tr.opts.timeout):
-			tr.safeTError("TestReceiver: test timeout")
+			tr.safeTError("receive timeout")
 
 			return exitreason.Timeout
 		}
