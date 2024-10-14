@@ -1,6 +1,7 @@
 package erl_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -17,7 +18,6 @@ func TestRegistration_ReRegisterName(t *testing.T) {
 	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
 
 	var pid erl.PID
-	// var ref erl.Ref
 
 	tc.Arrange(func(self erl.PID) {
 		// pid = tc.Spawn(erltest.NewReceiver(t))
@@ -40,4 +40,35 @@ func TestRegistration_ReRegisterName(t *testing.T) {
 		t.Logf("registration error: %+v", err)
 		assert.Assert(t, err == nil)
 	})
+}
+
+func TestRegistration_MassRegistration(t *testing.T) {
+	for i := 0; i < 1_000; i++ {
+		tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
+		name := erl.Name(fmt.Sprintf("my_pid-%d", i))
+
+		var pid erl.PID
+
+		tc.Arrange(func(self erl.PID) {
+			// pid = tc.Spawn(erltest.NewReceiver(t))
+			pid, _ = erltest.NewReceiver(t)
+			err := erl.Register(name, pid)
+
+			assert.Assert(t, err == nil)
+			_ = erl.Monitor(self, pid)
+
+			tc.Receiver().Expect(erl.DownMsg{}, expect.Called(expect.Times(1)))
+		})
+
+		tc.Act(func() {
+			erl.Exit(tc.TestPID(), pid, exitreason.TestExit)
+		})
+
+		tc.Assert(func() {
+			pid2, _ := erltest.NewReceiver(t)
+			err := erl.Register(name, pid2)
+			t.Logf("registration error: %+v", err)
+			assert.Assert(t, err == nil)
+		})
+	}
 }
