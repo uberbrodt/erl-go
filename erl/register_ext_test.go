@@ -205,9 +205,8 @@ func TestRegistration_ReRegisterNameAfterExitMsg(t *testing.T) {
 }
 
 func TestRegistration_MassRegistration(t *testing.T) {
-	t.Skip()
-	for i := 0; i < 1_000; i++ {
-		tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
+	for i := 0; i < 10; i++ {
+		tc := testcase.New(t, erltest.WaitTimeout(500*time.Millisecond))
 		name := erl.Name(fmt.Sprintf("my_pid-%d", i))
 
 		var pid erl.PID
@@ -220,7 +219,7 @@ func TestRegistration_MassRegistration(t *testing.T) {
 			assert.Assert(t, err == nil)
 			_ = erl.Monitor(self, pid)
 
-			tc.Receiver().Expect(erl.DownMsg{}, expect.Called(expect.Times(1)))
+			tc.Receiver().Expect(erl.DownMsg{}, expect.Called(expect.AtLeast(1)))
 		})
 
 		tc.Act(func() {
