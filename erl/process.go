@@ -14,6 +14,7 @@ import (
 
 	"github.com/uberbrodt/erl-go/chronos"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
+	"github.com/uberbrodt/erl-go/erl/internal/inbox"
 )
 
 var nextProcessID atomic.Int64
@@ -27,7 +28,7 @@ type Process struct {
 	id              int64
 	runnable        Runnable
 	receive         chan Signal
-	runnableReceive chan any
+	runnableReceive *inbox.Inbox[any]
 	done            chan error
 	links           []PID
 	monitors        []pMonitor
@@ -65,7 +66,7 @@ func (p *Process) run() {
 				p.done <- exitreason.Exception(result)
 			}
 		}()
-		runnableExitReason := p.runnable.Receive(PID{p: p}, p.runnableReceive)
+		runnableExitReason := p.runnable.Receive(PID{p: p}, p.runnableReceive.Receive())
 		if runnableExitReason == nil {
 			runnableExitReason = exitreason.Normal
 		}
@@ -75,12 +76,17 @@ func (p *Process) run() {
 			DebugPrintf("%v runnable exited\r", p)
 		}
 		p.done <- runnableExitReason
+		close(p.done)
 	}()
 	for {
 		select {
 		// this happens when the Runnable exits
 		case exitReason := <-p.done:
-			p.exit(exitReason)
+			// if we're in status running, it means the runnable exited, so we need to
+			// perform an exit.
+			if p.getStatus() == running {
+				p.exit(exitReason)
+			}
 			return
 
 		case signal := <-p.receive:
@@ -127,7 +133,7 @@ func (p *Process) run() {
 
 			case messageSignal:
 				if p.getStatus() == running {
-					p.runnableReceive <- sig.term
+					p.runnableReceive.Enqueue(sig.term)
 				}
 			case downSignal:
 				if p.getStatus() == running {
@@ -137,7 +143,7 @@ func (p *Process) run() {
 						Logger.Printf("%v, got a DOWN signal but could not match Ref %+v\r", p.self(), sig)
 						break
 					}
-					p.runnableReceive <- downMsgfromSignal(sig)
+					p.runnableReceive.Enqueue(downMsgfromSignal(sig))
 					// for custom message types
 					// this should happen as a result of a linked process existing or someone calling [Exit] on the process.
 				}
@@ -153,7 +159,7 @@ func (p *Process) run() {
 					// if we're trapping exits, send the signal to the runnable for them to deal with, don't exit.
 					if p.trapExits() {
 						DebugPrintf("%+v Trapped exit signal from %+v", p.self(), sig.sender)
-						p.runnableReceive <- exitMsgFromSignal(sig)
+						p.runnableReceive.Enqueue(exitMsgFromSignal(sig))
 						DebugPrintf("%v sent exitMsg", p.self())
 					} else {
 						// ignore normal exits from other processes when not trapping exits; [exitreason.Normal] is
@@ -173,6 +179,8 @@ func (p *Process) run() {
 }
 
 func (p *Process) exit(e error) {
+	// set status to exiting so that our main loop doesn't send signals twice.
+	p.setStatus(exiting)
 	if p.getName() != "" {
 		DebugPrintf("%v unregistering name: %s", p, p.getName())
 		Unregister(p.getName())
@@ -188,8 +196,6 @@ func (p *Process) exit(e error) {
 		errors.As(tmpE, &exitReason)
 	}
 
-	p.setStatus(exiting)
-
 	for _, linked := range p.links {
 		linked.p.send(exitSignal{sender: p.self(), receiver: linked, reason: exitReason, link: true})
 	}
@@ -197,7 +203,9 @@ func (p *Process) exit(e error) {
 		monit.pid.p.send(downSignal{proc: p.self(), ref: monit.ref, reason: exitReason})
 	}
 	p.exitReason = exitReason
-	close(p.runnableReceive)
+	p.runnableReceive.Close()
+	// wait until runnable has exited
+	<-p.done
 	p.setStatus(exited)
 }
 
@@ -282,13 +290,10 @@ func (p *Process) setName(name Name) {
 
 func NewProcess(r Runnable) *Process {
 	return &Process{
-		id:       nextProcessID.Add(1),
-		runnable: r,
-		receive:  make(chan Signal),
-		// XXX: Buffering this simplifies the Process code but ultimately will need to be replaced.
-		// The issue is that [Send] will block when the buffer fills up and the intention of Send is
-		// to NEVER block.
-		runnableReceive: make(chan any, 10_000),
+		id:              nextProcessID.Add(1),
+		runnable:        r,
+		receive:         make(chan Signal),
+		runnableReceive: inbox.New[any](),
 		done:            make(chan error),
 		links:           make([]PID, 0),
 		monitors:        make([]pMonitor, 0),
