@@ -30,9 +30,14 @@ func (ex *Expectation) Satisfied(testEnded bool) bool {
 }
 
 func doSatisifed(ex *Expectation, testEnded bool) bool {
-	if ex.opts.exType == exact && ex.opts.times == 0 && testEnded {
+	// these two types can only be evaluated at test end
+	if (ex.opts.exType == exact || ex.opts.exType == atMost) && !testEnded {
+		return false
+	}
+
+	if ex.opts.exType == exact && ex.opts.times == 0 {
 		return ex.matchCnt == 0
-	} else if ex.opts.exType == atMost && testEnded {
+	} else if ex.opts.exType == atMost {
 		return ex.matchCnt <= ex.opts.times
 	} else {
 		return ex.satisfied

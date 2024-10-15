@@ -112,7 +112,7 @@ func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 
 	erl.ProcessFlag(pid, erl.TrapExit, true)
 	t.Cleanup(func() {
-		tr.log.Info("shutting down...")
+		tr.log.Info("executing TestReceiver cleanup...")
 		done := exitwaiter.New(t, erl.RootPID(), pid)
 		erl.Exit(erl.RootPID(), pid, exitreason.TestExit)
 		<-done
@@ -139,6 +139,18 @@ type TestReceiver struct {
 	log       *slog.Logger
 }
 
+func (tr *TestReceiver) getExiting() bool {
+	defer tr.selfmx.RUnlock()
+	tr.selfmx.RLock()
+	return tr.exiting
+}
+
+func (tr *TestReceiver) setExiting(status bool) {
+	defer tr.selfmx.Unlock()
+	tr.selfmx.Lock()
+	tr.exiting = status
+}
+
 func (tr *TestReceiver) getSelf() erl.PID {
 	defer tr.selfmx.RUnlock()
 	tr.selfmx.RLock()
@@ -153,7 +165,7 @@ func (tr *TestReceiver) setSelf(pid erl.PID) {
 
 // only log if the test isn't existing or ended.
 func (tr *TestReceiver) safeTLogf(format string, args ...any) {
-	if !tr.exiting {
+	if !tr.getExiting() {
 		prefix := fmt.Sprintf("[TestReceiver: %s|PID: %+v]: %s", tr.opts.name, tr.getSelf(), format)
 		tr.t.Logf(prefix, args...)
 	}
@@ -175,7 +187,7 @@ func (tr *TestReceiver) Receive(self erl.PID, inbox <-chan any) error {
 			}
 			switch v := msg.(type) {
 			case erl.ExitMsg:
-				tr.exiting = true
+				tr.setExiting(true)
 				if errors.Is(v.Reason, exitreason.TestExit) {
 					tr.log.Info("received a TestExit, shutting down", "reason", v.Reason, "sending-proc", v.Proc)
 					return exitreason.Normal
