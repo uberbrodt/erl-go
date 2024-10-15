@@ -20,6 +20,7 @@ import (
 	"github.com/uberbrodt/erl-go/chronos"
 	"github.com/uberbrodt/erl-go/erl"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
+	"github.com/uberbrodt/erl-go/erl/exitwaiter"
 	"github.com/uberbrodt/erl-go/erl/genserver"
 )
 
@@ -112,7 +113,9 @@ func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 	erl.ProcessFlag(pid, erl.TrapExit, true)
 	t.Cleanup(func() {
 		tr.log.Info("shutting down...")
+		done := exitwaiter.New(t, erl.RootPID(), pid)
 		erl.Exit(erl.RootPID(), pid, exitreason.TestExit)
+		<-done
 	})
 	return pid, tr
 }

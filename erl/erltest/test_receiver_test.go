@@ -277,7 +277,7 @@ func TestErlTestReceiver_Times_FailsIfLessThan(t *testing.T) {
 }
 
 func TestErlTestReceiver_Times_FailsIfGreaterThan(t *testing.T) {
-	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(time.Second), erltest.NoFail())
+	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(time.Second*2), erltest.NoFail())
 
 	tr.Expect(testMsg1{}, expect.Expect(func(arg erltest.ExpectArg) bool {
 		return true

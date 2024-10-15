@@ -24,7 +24,7 @@ func (e *RegistrationError) Error() string {
 }
 
 const (
-	// process is already registered with given name
+	// process is already registered with a name. Caller should consider calling [Unregister] and retry
 	AlreadyRegistered RegistrationErrorKind = "already_registered"
 	// another process already registered given name
 	NameInUse RegistrationErrorKind = "name_used"
