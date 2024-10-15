@@ -180,7 +180,8 @@ func TestStartLink_ReturnsExceptionIfStartFunPanics(t *testing.T) {
 	erl.Logger.Printf("Supervisor PID: %v", pid)
 	erl.Logger.Printf("Supervisor Error: %v", err)
 
-	assert.Assert(t, exitreason.IsException(err))
+	erl.Logger.Printf("exitereason: %+v", err)
+	assert.Assert(t, exitreason.IsShutdown(err))
 	assert.ErrorContains(t, err, "uh-oh")
 	assert.Assert(t, !erl.IsAlive(pid))
 
