@@ -205,7 +205,22 @@ func (s SupervisorS) Terminate(self erl.PID, arg error, state supervisorState) {
 	s.stopChildren(self, state.children.reverse())
 }
 
-func (s SupervisorS) startChild(self erl.PID, child ChildSpec) (ChildSpec, error) {
+func (s SupervisorS) startChild(self erl.PID, child ChildSpec) (cs ChildSpec, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			e, ok := r.(error)
+			if !ok {
+				err = exitreason.Exception(fmt.Errorf("panic starting child: %v", r))
+			} else {
+				if !exitreason.IsException(e) {
+					err = exitreason.Exception(e)
+				} else {
+					err = e
+				}
+			}
+
+		}
+	}()
 	childPID, err := child.Start(self)
 
 	switch {

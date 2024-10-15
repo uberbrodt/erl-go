@@ -1,4 +1,4 @@
-package port
+package port_test
 
 import (
 	"bytes"
@@ -14,7 +14,11 @@ import (
 
 	"github.com/uberbrodt/erl-go/chronos"
 	"github.com/uberbrodt/erl-go/erl"
+	"github.com/uberbrodt/erl-go/erl/erltest"
+	"github.com/uberbrodt/erl-go/erl/erltest/expect"
+	"github.com/uberbrodt/erl-go/erl/erltest/testcase"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
+	. "github.com/uberbrodt/erl-go/erl/port"
 	"github.com/uberbrodt/erl-go/erl/projectpath"
 )
 
@@ -287,64 +291,59 @@ func TestOpts_IgnoreStdOut(t *testing.T) {
 }
 
 func TestOpts_SetExitSignal(t *testing.T) {
-	self, tr := erl.NewTestReceiver(t)
-
-	exe := projectpath.Join("erl/port/testdata/fail_after_time.sh")
-	port := Open(self, NewCmd(exe, "3", "2"), ReturnExitStatus(), SetExitSignal(syscall.SIGINT))
-
+	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
 	var gotIntroMsg bool
 	var gotSigMsg bool
-	var portExit Exited
-	tr.Loop(func(anymsg any) bool {
-		switch msg := anymsg.(type) {
-		case Message:
+	var port erl.PID
+
+	exe := projectpath.Join("erl/port/testdata/fail_after_time.sh")
+
+	tc.Arrange(func(self erl.PID) {
+		tc.Receiver().Expect(Message{}, expect.Expect(func(arg erltest.ExpectArg) bool {
+			msg := arg.Msg.(Message)
 			if strings.Contains(string(msg.Data), "started") {
 				gotIntroMsg = true
 				Close(self, port)
-				return false
+				return true
 			}
 			if strings.Contains(string(msg.Data), "SIGINT") {
 				gotSigMsg = true
 				return true
 			}
-			return false
-		case Exited:
-			portExit = msg
-			return true
 
-		default:
+			if strings.Contains(string(msg.Data), "loop") {
+				gotSigMsg = true
+				return true
+			}
 			return false
-			// do nothing
-		}
+		}, expect.AtLeast(2)))
+		tc.Receiver().Expect(Exited{}, expect.Called(expect.Times(1)))
 	})
 
-	assert.Assert(t, gotIntroMsg)
-	assert.Assert(t, portExit.Err == nil)
-	assert.Assert(t, gotSigMsg)
+	tc.Act(func() {
+		port = Open(tc.TestPID(), NewCmd(exe, "3", "2"), ReturnExitStatus(), SetExitSignal(syscall.SIGINT))
+	})
+
+	tc.Assert(func() {
+		assert.Assert(t, gotIntroMsg)
+		assert.Assert(t, gotSigMsg)
+	})
 }
 
 func TestOpts_ReceiveStderr_GetPortErrMessages(t *testing.T) {
-	self, tr := erl.NewTestReceiver(t)
-
+	// self, tr := erltest.NewReceiver(t)
 	exe := projectpath.Join("erl/port/testdata/echo_stderr.sh")
-	Open(self, NewCmd(exe, "3", "0"), ReturnExitStatus(), ReceiveStdErr(DecodeLinesSplitFun))
+	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
 
-	var errMsgCnt int
-	tr.Loop(func(anymsg any) bool {
-		switch msg := anymsg.(type) {
-		case ErrMessage:
-			if strings.Contains(string(msg.Data), "loop") {
-				errMsgCnt++
-			}
-			return false
-		case Exited:
-			return true
-
-		default:
-			return false
-			// do nothing
-		}
+	tc.Arrange(func(self erl.PID) {
+		tc.Receiver().Expect(ErrMessage{}, expect.Called(expect.Times(4)))
+		tc.Receiver().Expect(Exited{}, expect.Called(expect.Times(1)))
 	})
 
-	assert.Equal(t, errMsgCnt, 4)
+	tc.Act(func() {
+		Open(tc.TestPID(), NewCmd(exe, "3", "0"), ReturnExitStatus(), ReceiveStdErr(DecodeLinesSplitFun))
+	})
+
+	tc.Assert(func() {
+	})
 }

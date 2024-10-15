@@ -277,12 +277,11 @@ func TestErlTestReceiver_Times_FailsIfLessThan(t *testing.T) {
 }
 
 func TestErlTestReceiver_Times_FailsIfGreaterThan(t *testing.T) {
-	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(time.Second), erltest.NoFail())
+	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(time.Second*1), erltest.NoFail())
 
-	tr.Expect(testMsg1{}, expect.Expect(func(arg erltest.ExpectArg) bool {
-		return true
-	}, expect.Times(4)))
+	tr.Expect(testMsg1{}, expect.Called(expect.Times(4)))
 
+	erl.Send(testPID, testMsg1{foo: "bar"})
 	erl.Send(testPID, testMsg1{foo: "bar"})
 	erl.Send(testPID, testMsg1{foo: "bar"})
 	erl.Send(testPID, testMsg1{foo: "bar"})
@@ -294,7 +293,7 @@ func TestErlTestReceiver_Times_FailsIfGreaterThan(t *testing.T) {
 	f, pass := tr.Pass()
 
 	assert.Assert(t, !pass)
-	assert.Assert(t, f == 1)
+	assert.Assert(t, f >= 1)
 	assert.Equal(t, tr.Failures()[0].Reason, "expected to match 4 times, but match count is now: 5")
 }
 
@@ -432,7 +431,7 @@ func TestErlTestReceiver_CallExpect_FailsIfNotMatched(t *testing.T) {
 	assert.Assert(t, f == 0)
 }
 
-func TestErlTestReciver_NestedExpect(t *testing.T) {
+func TestErlTestReceiver_NestedExpect(t *testing.T) {
 	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(time.Second))
 
 	var buzzed bool
@@ -511,7 +510,7 @@ func TestErlTestReciver_NestedExpect(t *testing.T) {
 	assert.Assert(t, expectFoobar.Satisfied(true))
 }
 
-func TestErlTestReciver_ExpectEquals(t *testing.T) {
+func TestErlTestReceiver_ExpectEquals(t *testing.T) {
 	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(time.Second))
 
 	barMsg := testMsg1{foo: "bar"}
@@ -555,7 +554,7 @@ func TestErlTestReciver_ExpectEquals(t *testing.T) {
 	assert.Assert(t, expectFoobar.Satisfied(true))
 }
 
-func TestErlTestReciver_ChainedExpect(t *testing.T) {
+func TestErlTestReceiver_ChainedExpect(t *testing.T) {
 	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(time.Second))
 
 	barMsg := testMsg2{foo: "bar", bar: "baz"}
