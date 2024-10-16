@@ -50,10 +50,12 @@ func ReceiverTimeout(t time.Duration) ReceiverOpt {
 }
 
 // Specify how long for [TestReciever.Wait] for all expectations to be met
-// see [DefaultWaitTimeout]
+// see [DefaultWaitTimeout]. Will set the receiver timeout to double the wait
+// timeout so there's no need to call [ReceiverTimeout] in most cases.
 func WaitTimeout(t time.Duration) ReceiverOpt {
 	return func(ro receiverOptions) receiverOptions {
 		ro.waitTimeout = t
+		ro.timeout = t * 2
 		return ro
 	}
 }
