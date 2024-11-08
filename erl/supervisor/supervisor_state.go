@@ -3,6 +3,7 @@ package supervisor
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"golang.org/x/exp/slices"
@@ -78,6 +79,9 @@ func (cs *childSpecs) checkDups() error {
 
 	var x struct{}
 	for _, spec := range cs.specs {
+		if strings.TrimSpace(spec.ID) == "" {
+			return fmt.Errorf("childspec cannot have a blank id: %+v", spec)
+		}
 		_, ok := keyMap[spec.ID]
 		if !ok {
 			keyMap[spec.ID] = x
