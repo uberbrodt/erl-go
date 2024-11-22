@@ -11,7 +11,7 @@ type TimerRef struct {
 }
 
 func CancelTimer(tr TimerRef) error {
-	if tr.pid.IsNil() {
+	if tr.pid.IsNil() || tr.pid == UndefinedPID {
 		return exitreason.NoProc
 	}
 	Send(tr.pid, cancelTimer{})
@@ -38,17 +38,22 @@ func (t *timer) Receive(self PID, inbox <-chan any) error {
 			}
 			switch msg := anyMsg.(type) {
 			case cancelTimer:
+				DebugPrintf("<timer:%v> cancelled", self)
 				return exitreason.Normal
 			case DownMsg:
 				// if the process we want to send a message to dies, cancel the timer by exiting
 				if t.ref == msg.Ref {
+					DebugPrintf("<timer:%v> process down, cancelling", self)
 					return exitreason.Normal
+				} else {
+					DebugPrintf("<timer:%v> got unknown DownMsg: %+v", msg)
 				}
 			default:
-				DebugPrintf("%v time received unknown message %+v", msg)
+				DebugPrintf("<timer:%v> received unknown message %+v", self, msg)
 			}
 
 		case <-time.After(t.tout):
+			DebugPrintf("<timer:%v> firing msg %+v to %+v", self, t.term, t.to)
 			Send(t.to, t.term)
 			return exitreason.Normal
 		}
