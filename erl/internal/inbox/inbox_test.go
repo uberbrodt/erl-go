@@ -12,7 +12,7 @@ func TestPop_ReturnsValue(t *testing.T) {
 
 	ibox.Enqueue(12)
 
-	result, ok := ibox.Pop()
+	result, ok, _ := ibox.Pop()
 
 	assert.Assert(t, ok)
 
@@ -25,7 +25,7 @@ func TestPop_RemovesItemFromInbox(t *testing.T) {
 	ibox.Enqueue(12)
 	ibox.Enqueue(37)
 
-	result, ok := ibox.Pop()
+	result, ok, _ := ibox.Pop()
 
 	assert.Assert(t, ok)
 
@@ -37,7 +37,7 @@ func TestPop_RemovesItemFromInbox(t *testing.T) {
 func TestPop_ReturnsNothing(t *testing.T) {
 	ibox := inbox.New[int]()
 
-	result, ok := ibox.Pop()
+	result, ok, _ := ibox.Pop()
 
 	assert.Assert(t, !ok)
 

@@ -6,13 +6,11 @@ import (
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"golang.org/x/exp/slices"
 
 	"github.com/uberbrodt/fungo/fun"
 
-	"github.com/uberbrodt/erl-go/chronos"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
 	"github.com/uberbrodt/erl-go/erl/internal/inbox"
 )
@@ -27,7 +25,7 @@ type pMonitor struct {
 type Process struct {
 	id              int64
 	runnable        Runnable
-	receive         chan Signal
+	receive         *inbox.Inbox[Signal] // chan Signal
 	runnableReceive *inbox.Inbox[any]
 	done            chan error
 	links           []PID
@@ -66,7 +64,25 @@ func (p *Process) run() {
 				p.done <- exitreason.Exception(result)
 			}
 		}()
-		runnableExitReason := p.runnable.Receive(PID{p: p}, p.runnableReceive.Receive())
+
+		c := make(chan any)
+
+		go func() {
+			for {
+				msg, ok, closed := p.runnableReceive.Pop()
+				if closed != nil {
+					close(c)
+					return
+				}
+				if !ok {
+					continue
+				}
+
+				c <- msg
+			}
+		}()
+
+		runnableExitReason := p.runnable.Receive(PID{p: p}, c)
 		if runnableExitReason == nil {
 			runnableExitReason = exitreason.Normal
 		}
@@ -78,6 +94,7 @@ func (p *Process) run() {
 		p.done <- runnableExitReason
 		close(p.done)
 	}()
+	// sigChan := p.receive.Receive()
 	for {
 		select {
 		// this happens when the Runnable exits
@@ -89,7 +106,19 @@ func (p *Process) run() {
 			}
 			return
 
-		case signal := <-p.receive:
+		default:
+			// case signal, ok := <-sigChan:
+			// 	if !ok {
+			// 		return
+			// 	}
+			signal, ok, closed := p.receive.Pop()
+			if closed != nil {
+				DebugPrintf("process got inbox closed, should have exited before this.")
+				return
+			}
+			if !ok {
+				continue
+			}
 			DebugPrintf("%v received %s signal\r", p.self(), signal.SignalName())
 			switch sig := signal.(type) {
 
@@ -218,15 +247,17 @@ func (p *Process) self() PID {
 // Down message, but otherwise no-op
 func (p *Process) send(sig Signal) {
 	if p.getStatus() == running {
-		var notRunning bool
-		for !notRunning {
-			select {
-			case p.receive <- sig:
-				return
-			case <-time.After(chronos.Dur("5ms")):
-				notRunning = p.getStatus() != running
-			}
-		}
+		p.receive.Enqueue(sig)
+		return
+		// var notRunning bool
+		// for !notRunning {
+		// 	select {
+		// 	case p.receive <- sig:
+		// 		return
+		// 	case <-time.After(chronos.Dur("5ms")):
+		// 		notRunning = p.getStatus() != running
+		// 	}
+		// }
 	}
 
 	// one of the guarantees of [erl] is that you'll always got a DownMsg/ExitMsg if you link to a process
@@ -290,9 +321,10 @@ func (p *Process) setName(name Name) {
 
 func NewProcess(r Runnable) *Process {
 	return &Process{
-		id:              nextProcessID.Add(1),
-		runnable:        r,
-		receive:         make(chan Signal),
+		id:       nextProcessID.Add(1),
+		runnable: r,
+		// receive:         make(chan Signal),
+		receive:         inbox.New[Signal](),
 		runnableReceive: inbox.New[any](),
 		done:            make(chan error),
 		links:           make([]PID, 0),

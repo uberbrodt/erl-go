@@ -1,6 +1,7 @@
 package inbox
 
 import (
+	"fmt"
 	"sync"
 )
 
@@ -41,48 +42,24 @@ func (i *Inbox[M]) Enqueue(msg M) bool {
 	return true
 }
 
-// Returns a channel that will send values as long as the inbox is open.
-// The returned channel will be closed if [Close] is called on the inbox.
-func (i *Inbox[M]) Receive() <-chan M {
-	rec := make(chan M)
-
-	go func() {
-		for {
-			v, ok := i.Pop()
-
-			if !ok {
-				continue
-			}
-
-			select {
-			case <-i.done:
-				// return if this inbox has been closed
-				close(rec)
-				return
-			case rec <- v:
-				// this case will block until the receiver is ready to get the message. We don't
-				// need to do anything here.
-			}
-		}
-	}()
-
-	return rec
-}
-
 // get and remove a value from the inbox. This is safe to call from multiple go routines.
-func (i *Inbox[M]) Pop() (M, bool) {
+func (i *Inbox[M]) Pop() (M, bool, error) {
 	var null M
 	i.mx.Lock()
 	defer i.mx.Unlock()
+
+	if i.closed {
+		return null, false, fmt.Errorf("inbox closed")
+	}
 	if len(i.msgQ) == 0 {
-		return null, false
+		return null, false, nil
 	}
 
 	head := i.msgQ[0]
 	tail := i.msgQ[1:]
 	i.msgQ = tail
 
-	return head, true
+	return head, true, nil
 }
 
 // Return the number of items in the Inbox
