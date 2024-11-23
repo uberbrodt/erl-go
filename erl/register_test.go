@@ -15,7 +15,7 @@ func TestRegister_ReturnsOK(t *testing.T) {
 }
 
 func TestWhereIs_NameNotFound(t *testing.T) {
-	name := Name("my_pid")
+	name := Name("my_pid1")
 	pid := testSpawn(t, &TestRunnable{t: t, expected: "foo"})
 	Register(Name("foo"), pid)
 

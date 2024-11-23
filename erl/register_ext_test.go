@@ -2,6 +2,7 @@ package erl_test
 
 import (
 	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -14,6 +15,15 @@ import (
 	"github.com/uberbrodt/erl-go/erl/erltest/testcase"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
 )
+
+type NamedProcess struct{}
+
+func (np NamedProcess) Receive(self erl.PID, inbox <-chan any) error {
+	for msg := range inbox {
+		slog.Info("got message", "msg", msg)
+	}
+	return nil
+}
 
 func TestRegistration_ReRegisterNameAfterDownMsg(t *testing.T) {
 	name := erl.Name("my_pid")
@@ -205,16 +215,15 @@ func TestRegistration_ReRegisterNameAfterExitMsg(t *testing.T) {
 }
 
 func TestRegistration_MassRegistration(t *testing.T) {
-	t.Skip()
-	for i := 0; i < 10; i++ {
-		tc := testcase.New(t, erltest.WaitTimeout(500*time.Millisecond))
+	for i := 0; i < 20; i++ {
+		tc := testcase.New(t, erltest.WaitTimeout(5000*time.Millisecond))
 		name := erl.Name(fmt.Sprintf("my_pid-%d", i))
 
 		var pid erl.PID
 
 		tc.Arrange(func(self erl.PID) {
 			// pid = tc.Spawn(erltest.NewReceiver(t))
-			pid, _ = erltest.NewReceiver(t)
+			pid = erl.Spawn(NamedProcess{})
 			err := erl.Register(name, pid)
 
 			assert.Assert(t, err == nil)
@@ -224,11 +233,11 @@ func TestRegistration_MassRegistration(t *testing.T) {
 		})
 
 		tc.Act(func() {
-			erl.Exit(tc.TestPID(), pid, exitreason.TestExit)
+			erl.Exit(tc.TestPID(), pid, exitreason.Normal)
 		})
 
 		tc.Assert(func() {
-			pid2, _ := erltest.NewReceiver(t)
+			pid2 := erl.Spawn(NamedProcess{})
 			err := erl.Register(name, pid2)
 			t.Logf("registration error: %+v", err)
 			assert.Assert(t, err == nil)
