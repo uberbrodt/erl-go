@@ -2,6 +2,13 @@ package erl
 
 import "github.com/uberbrodt/erl-go/erl/exitreason"
 
+// A Signal is the low level communication method between processes. There are
+// 7 signal types: link, unlink, monitor, demonitor, exit, down, and message.
+// link/unlink and monitor/demonitor and used internally by the [process] code and are
+// not exposed to Runnables directly. Runnables can only receive messageSignals, but
+// the process will convert downSignals and exitSignals into [DownMsg] and [ExitMsg]
+// so they can be consumed by [Runnable]s (only if the [TrapExit] flag is set on the
+// process in the latter case).
 type Signal interface {
 	SignalName() string
 }

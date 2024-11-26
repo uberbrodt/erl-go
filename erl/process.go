@@ -50,9 +50,11 @@ func (p *Process) String() string {
 }
 
 func (p *Process) run() {
+	// start a go routine that will handle the [Runnable] and feed it [messageSignal]s
 	go func() {
 		var result error
 		defer func() {
+			// if the [Runnable] panics, we log it and put an Exception reason on the done channel
 			if r := recover(); r != nil {
 				e, ok := r.(error)
 				if ok {
@@ -65,10 +67,13 @@ func (p *Process) run() {
 			}
 		}()
 
+		// the channel used in [Runnable.Receive]
 		c := make(chan any)
 
 		go func() {
 			for {
+				// the [p.runnableReceive] will be closed by [exit] so even in the event of a
+				// runnable panicking, this channel will be closed
 				msg, ok, closed := p.runnableReceive.Pop()
 				if closed != nil {
 					close(c)
@@ -94,7 +99,6 @@ func (p *Process) run() {
 		p.done <- runnableExitReason
 		close(p.done)
 	}()
-	// sigChan := p.receive.Receive()
 	for {
 		select {
 		// this happens when the Runnable exits
@@ -107,10 +111,6 @@ func (p *Process) run() {
 			return
 
 		default:
-			// case signal, ok := <-sigChan:
-			// 	if !ok {
-			// 		return
-			// 	}
 			signal, ok, closed := p.receive.Pop()
 			if closed != nil {
 				DebugPrintf("process got inbox closed, should have exited before this.")
@@ -249,15 +249,6 @@ func (p *Process) send(sig Signal) {
 	if p.getStatus() == running {
 		p.receive.Enqueue(sig)
 		return
-		// var notRunning bool
-		// for !notRunning {
-		// 	select {
-		// 	case p.receive <- sig:
-		// 		return
-		// 	case <-time.After(chronos.Dur("5ms")):
-		// 		notRunning = p.getStatus() != running
-		// 	}
-		// }
 	}
 
 	// one of the guarantees of [erl] is that you'll always got a DownMsg/ExitMsg if you link to a process
