@@ -55,11 +55,12 @@ test: check-tools
 	GORACE="history_size=2" gotestsum -f testname -- -timeout 3m -race -coverprofile cover.out $(TEST_ARG)
 	./scripts/rm-test-fw-from-coverprofile
 
+
 #################################################################################
-#@ test-integration: runs all integration tests.
+#@ test-full: runs all tests, including slow and integration tests.
 #################################################################################
-test-integration:
-	gotestsum -f testname -- -tags=integration -p 1 -coverprofile cover.out $(TEST_ARG)
+test-full:
+	SLOW=1 gotestsum -f testname -- -tags=integration -p 1 -coverprofile cover.out $(TEST_ARG)
 
 
 #################################################################################

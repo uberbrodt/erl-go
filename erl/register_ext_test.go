@@ -14,6 +14,7 @@ import (
 	"github.com/uberbrodt/erl-go/erl/erltest/expect"
 	"github.com/uberbrodt/erl-go/erl/erltest/testcase"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
+	"github.com/uberbrodt/erl-go/erl/internal/test"
 )
 
 type NamedProcess struct{}
@@ -215,8 +216,9 @@ func TestRegistration_ReRegisterNameAfterExitMsg(t *testing.T) {
 }
 
 func TestRegistration_MassRegistration(t *testing.T) {
+	test.SlowTest(t)
 	for i := 0; i < 20; i++ {
-		tc := testcase.New(t, erltest.WaitTimeout(5000*time.Millisecond))
+		tc := testcase.New(t, erltest.WaitTimeout(30*time.Second))
 		name := erl.Name(fmt.Sprintf("my_pid-%d", i))
 
 		var pid erl.PID

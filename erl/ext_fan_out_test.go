@@ -13,6 +13,7 @@ import (
 	"github.com/uberbrodt/erl-go/erl/exitreason"
 	"github.com/uberbrodt/erl-go/erl/genserver"
 	"github.com/uberbrodt/erl-go/erl/gensrv"
+	"github.com/uberbrodt/erl-go/erl/internal/test"
 	"github.com/uberbrodt/erl-go/erl/supervisor"
 )
 
@@ -247,6 +248,7 @@ func ProducerStartLink(self erl.PID, conf producerConfig) (erl.PID, error) {
 }
 
 func TestExt_WorkerFanOut(t *testing.T) {
+	test.SlowTest(t)
 	testPID, _ := erltest.NewReceiver(t, erltest.WaitTimeout(3*time.Minute))
 	stop := 500
 	workerCnt := 16
