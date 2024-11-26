@@ -593,3 +593,18 @@ func TestErlTestReceiver_CallExpect_ReturnFailure(t *testing.T) {
 	assert.Equal(t, f, 1)
 	assert.Equal(t, tr.Failures()[0].Exp.Name(), "FooBar Check")
 }
+
+func TestReceiver_StopWaitsUntilStopped(t *testing.T) {
+	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(5*time.Second))
+
+	// sending whatever just to simulate real usage
+	for i := 0; i < 5; i++ {
+		erl.Send(testPID, testMsg1{})
+	}
+
+	tr.Stop()
+
+	t.Logf("checking to see if %+v is still alive", testPID)
+	assert.Assert(t, erl.IsAlive(tr.Self()) == false)
+	assert.Assert(t, erl.IsAlive(testPID) == false)
+}

@@ -6,6 +6,7 @@ package exitwaiter
 import (
 	"errors"
 	"log/slog"
+	"sync"
 	"testing"
 
 	"github.com/uberbrodt/erl-go/erl"
@@ -15,7 +16,7 @@ import (
 
 // The initial Arg that is received in the Init callback/initially set in StartLink
 type weConfig struct {
-	sig      chan struct{}
+	wg       *sync.WaitGroup
 	waitinOn erl.PID
 }
 
@@ -27,16 +28,14 @@ type westate struct {
 
 // Starts a new ExitWaiter. The returned channel will be closed when the exit
 // signal is received from [waitingOn]
-func New(t *testing.T, self erl.PID, waitingOn erl.PID) <-chan struct{} {
-	c := make(chan struct{})
-	_, err := Start(self, weConfig{sig: c, waitinOn: waitingOn})
+func New(t *testing.T, self erl.PID, waitingOn erl.PID, wg *sync.WaitGroup) (erl.PID, error) {
+	pid, err := Start(self, weConfig{wg: wg, waitinOn: waitingOn})
 	if err != nil {
 		t.Logf("could not start exitWaiter: %v", err)
 		t.FailNow()
-		return c
+		return pid, err
 	}
-
-	return c
+	return pid, err
 }
 
 func Start(self erl.PID, conf weConfig) (erl.PID, error) {
@@ -64,7 +63,7 @@ func initSrv(self erl.PID, args any) (westate, any, error) {
 func handleDownMsg(self erl.PID, msg erl.DownMsg, state westate) (westate, any, error) {
 	if msg.Proc.Equals(state.conf.waitinOn) && msg.Ref == state.ref {
 		slog.Info("waitExit caught DownMsg, closing signal channel", "msg", msg)
-		close(state.conf.sig)
+		state.conf.wg.Done()
 		return state, nil, exitreason.Normal
 	}
 	return state, nil, nil
@@ -73,7 +72,7 @@ func handleDownMsg(self erl.PID, msg erl.DownMsg, state westate) (westate, any, 
 func handleExitMsg(self erl.PID, msg erl.ExitMsg, state westate) (westate, any, error) {
 	if msg.Proc.Equals(state.conf.waitinOn) {
 		slog.Info("waitExit caught ExitMsg, closing signal channel", "msg", msg)
-		close(state.conf.sig)
+		state.conf.wg.Done()
 		return state, nil, exitreason.Normal
 	}
 	return state, nil, nil

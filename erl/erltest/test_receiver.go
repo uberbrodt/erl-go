@@ -37,6 +37,7 @@ type receiverOptions struct {
 	noFail      bool
 	name        string
 	logger      *slog.Logger
+	parent      erl.PID
 }
 
 // Specify how long the test reciever should run for before stopping.
@@ -77,6 +78,14 @@ func Name(name string) ReceiverOpt {
 	}
 }
 
+// Set a parent for this test process. Defaults to [erl.rootPID]
+func Parent(parent erl.PID) ReceiverOpt {
+	return func(ro receiverOptions) receiverOptions {
+		ro.parent = parent
+		return ro
+	}
+}
+
 // XXX: might remove.
 func SetLogger(logger *slog.Logger) ReceiverOpt {
 	return func(ro receiverOptions) receiverOptions {
@@ -92,6 +101,7 @@ func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 		timeout:     DefaultReceiverTimeout,
 		waitTimeout: DefaultWaitTimeout,
 		name:        fmt.Sprintf("%s-test-receiver", xid.New().String()),
+		parent:      erl.RootPID(),
 	}
 	for _, o := range opts {
 		rOpts = o(rOpts)
@@ -111,13 +121,13 @@ func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 		tr.log = slog.With("erltest.test-receiver", rOpts.name)
 	}
 	pid := erl.Spawn(tr)
+	tr.setSelf(pid)
+	t.Logf("TestReceiver PID spawned: %+v", pid)
 
 	erl.ProcessFlag(pid, erl.TrapExit, true)
 	t.Cleanup(func() {
 		tr.log.Info("executing TestReceiver cleanup...")
-		done := exitwaiter.New(t, erl.RootPID(), pid)
-		erl.Exit(erl.RootPID(), pid, exitreason.TestExit)
-		<-done
+		tr.Stop()
 	})
 	return pid, tr
 }
@@ -159,6 +169,12 @@ func (tr *TestReceiver) getSelf() erl.PID {
 	return tr.self
 }
 
+func (tr *TestReceiver) Self() erl.PID {
+	defer tr.selfmx.RUnlock()
+	tr.selfmx.RLock()
+	return tr.self
+}
+
 func (tr *TestReceiver) setSelf(pid erl.PID) {
 	defer tr.selfmx.Unlock()
 	tr.selfmx.Lock()
@@ -180,7 +196,7 @@ func (tr *TestReceiver) safeTError(format string, args ...any) {
 }
 
 func (tr *TestReceiver) Receive(self erl.PID, inbox <-chan any) error {
-	tr.setSelf(self)
+	// tr.setSelf(self)
 	for {
 		select {
 		case msg, ok := <-inbox:
@@ -361,8 +377,20 @@ func (tr *TestReceiver) Wait() {
 
 // will cause the test receiver to exit, sending signals to linked and monitoring
 // processes. This is not needed for normal test cleanup (that is handled via [t.Cleanup()])
-func (tr *TestReceiver) Stop(self erl.PID) {
-	erl.Exit(self, tr.getSelf(), exitreason.TestExit)
+func (tr *TestReceiver) Stop() {
+	if !erl.IsAlive(tr.getSelf()) {
+		return
+	}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	_, err := exitwaiter.New(tr.t, tr.opts.parent, tr.getSelf(), &wg)
+	if err != nil {
+		tr.t.Errorf("FAILURE starting exitwaiter for test process: %+v", err)
+		return
+	}
+	erl.Exit(tr.opts.parent, tr.getSelf(), exitreason.TestExit)
+	wg.Wait()
+	tr.t.Logf("test receiver has stopped: %s ", tr.getSelf())
 }
 
 func (tr *TestReceiver) Failures() []*ExpectationFailure {
