@@ -16,6 +16,7 @@ import (
 	"github.com/rs/xid"
 	"github.com/uberbrodt/fungo/fun"
 	"golang.org/x/exp/maps"
+	"gotest.tools/v3/assert"
 
 	"github.com/uberbrodt/erl-go/chronos"
 	"github.com/uberbrodt/erl-go/erl"
@@ -30,6 +31,12 @@ var (
 )
 
 type ReceiverOpt func(ro receiverOptions) receiverOptions
+
+// used to inject more complex mocks based on a TestReceiver and have them checked
+// when [Wait] is called
+type TestDependency interface {
+	Pass() (int, bool)
+}
 
 type receiverOptions struct {
 	timeout     time.Duration
@@ -110,10 +117,12 @@ func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 	castExpects := make(map[reflect.Type]Expectation)
 	callExpects := make(map[reflect.Type]Expectation)
 	allExpects := make(map[string]Expectation)
+	testDeps := make([]TestDependency, 0)
+	deps := make([]erl.PID, 0)
 
 	tr := &TestReceiver{
 		t: t, msgExpects: expectations, castExpects: castExpects, callExpects: callExpects,
-		opts: rOpts, noFail: rOpts.noFail, allExpects: allExpects,
+		opts: rOpts, noFail: rOpts.noFail, allExpects: allExpects, testdeps: testDeps, deps: deps,
 	}
 	if rOpts.logger != nil {
 		tr.log = rOpts.logger
@@ -139,6 +148,8 @@ type TestReceiver struct {
 	callExpects map[reflect.Type]Expectation
 	allExpects  map[string]Expectation
 	failures    []*ExpectationFailure
+	testdeps    []TestDependency
+	deps        []erl.PID
 	msgCnt      int
 	self        erl.PID
 	// if set to true, t.FailNow will not be called in [Pass] or [Wait]
@@ -282,6 +293,29 @@ func (tr *TestReceiver) WaitOn(e ...Expectation) {
 	}
 }
 
+func (tr *TestReceiver) Join(pid erl.PID, td TestDependency) {
+	// if the pid is not nil, we should link to this process so that it will exit when
+	// this test receiver exits.
+	if !pid.IsNil() {
+		erl.Link(tr.getSelf(), pid)
+	}
+
+	tr.testdeps = append(tr.testdeps, td)
+}
+
+// starts the process via [startLink] with the TestReceiver as the parent. If [startLink] returns
+// an error the test is failed. The process will be synchronously killed when calling [Stop]
+func (tr *TestReceiver) StartSupervised(startLink func(self erl.PID) (erl.PID, error)) erl.PID {
+	tr.t.Helper()
+	pid, err := startLink(tr.getSelf())
+
+	assert.NilError(tr.t, err)
+
+	tr.deps = append(tr.deps, pid)
+
+	return pid
+}
+
 // Set an expectation that will be matched whenever a [matchTerm] msg type is received.
 func (tr *TestReceiver) Expect(matchTerm any, e Expectation) {
 	t := reflect.TypeOf(matchTerm)
@@ -378,6 +412,30 @@ func (tr *TestReceiver) Wait() {
 // will cause the test receiver to exit, sending signals to linked and monitoring
 // processes. This is not needed for normal test cleanup (that is handled via [t.Cleanup()])
 func (tr *TestReceiver) Stop() {
+	// first, stop dependencies
+	if !erl.IsAlive(tr.getSelf()) {
+		return
+	}
+
+	var depWG sync.WaitGroup
+	if len(tr.deps) > 0 {
+		depWG.Add(len(tr.deps))
+
+		for _, dep := range tr.deps {
+			_, err := exitwaiter.New(tr.t, tr.getSelf(), dep, &depWG)
+			if err != nil {
+				tr.t.Errorf("FAILURE: testreceiver %s could not start exitwaiter for dep %+v: %+v", tr.getSelf(), dep, err)
+				return
+			}
+			erl.Exit(tr.opts.parent, dep, exitreason.Kill)
+
+		}
+
+		tr.t.Logf("test receiver %+v waiting for deps to stop", tr.getSelf())
+		depWG.Wait()
+		tr.t.Logf("test receiver %+v deps stopped", tr.getSelf())
+	}
+
 	if !erl.IsAlive(tr.getSelf()) {
 		return
 	}

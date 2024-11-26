@@ -608,3 +608,33 @@ func TestReceiver_StopWaitsUntilStopped(t *testing.T) {
 	assert.Assert(t, erl.IsAlive(tr.Self()) == false)
 	assert.Assert(t, erl.IsAlive(testPID) == false)
 }
+
+func TestReceiver_StopKillsDeps(t *testing.T) {
+	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(5*time.Second))
+
+	pid1 := tr.StartSupervised(func(self erl.PID) (erl.PID, error) {
+		pid, _ := erltest.NewReceiver(t)
+		return pid, nil
+	})
+
+	pid2 := tr.StartSupervised(func(self erl.PID) (erl.PID, error) {
+		pid, _ := erltest.NewReceiver(t)
+		return pid, nil
+	})
+	pid3 := tr.StartSupervised(func(self erl.PID) (erl.PID, error) {
+		pid, _ := erltest.NewReceiver(t)
+		return pid, nil
+	})
+	pid4 := tr.StartSupervised(func(self erl.PID) (erl.PID, error) {
+		pid, _ := erltest.NewReceiver(t)
+		return pid, nil
+	})
+
+	tr.Stop()
+
+	assert.Assert(t, erl.IsAlive(testPID) == false)
+	assert.Assert(t, erl.IsAlive(pid1) == false)
+	assert.Assert(t, erl.IsAlive(pid2) == false)
+	assert.Assert(t, erl.IsAlive(pid3) == false)
+	assert.Assert(t, erl.IsAlive(pid4) == false)
+}
