@@ -127,14 +127,14 @@ func (p *Process) run() {
 					sig.monitor.p.send(downSignal{proc: p.self(), ref: sig.ref, reason: exitreason.NoProc})
 					continue
 				}
-				if sig.monitor == p.self() {
+				if sig.monitor.Equals(p.self()) {
 					p.monitoring[sig.ref] = sig.monitored
 				} else {
 					// log.Info().Msgf("Monitors taken: %+v", b)
 					p.monitors = append(p.monitors, pMonitor{pid: sig.monitor, ref: sig.ref})
 				}
 			case demonitorSignal:
-				if sig.origin == p.self() {
+				if sig.origin.Equals(p.self()) {
 					monitoredPid := p.monitoring[sig.ref]
 					sendSignal(monitoredPid, sig)
 					delete(p.monitoring, sig.ref)
