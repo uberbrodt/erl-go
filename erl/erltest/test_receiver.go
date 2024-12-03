@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"reflect"
 	"sync"
 	"testing"
@@ -127,7 +128,7 @@ func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 	if rOpts.logger != nil {
 		tr.log = rOpts.logger
 	} else {
-		tr.log = slog.With("erltest.test-receiver", rOpts.name)
+		tr.log = slog.New(slog.NewTextHandler(os.Stderr, nil)).With("erltest.test-receiver", rOpts.name)
 	}
 	pid := erl.Spawn(tr)
 	tr.setSelf(pid)
@@ -194,10 +195,8 @@ func (tr *TestReceiver) setSelf(pid erl.PID) {
 
 // only log if the test isn't existing or ended.
 func (tr *TestReceiver) safeTLogf(format string, args ...any) {
-	if !tr.getExiting() {
-		prefix := fmt.Sprintf("[TestReceiver: %s|PID: %+v]: %s", tr.opts.name, tr.getSelf(), format)
-		tr.t.Logf(prefix, args...)
-	}
+	args = append([]any{"pid", tr.getSelf()}, args...)
+	tr.log.Info(format, args...)
 }
 
 // log and mark the test as failed
@@ -222,7 +221,7 @@ func (tr *TestReceiver) Receive(self erl.PID, inbox <-chan any) error {
 					return exitreason.Normal
 				}
 			}
-			tr.safeTLogf("got message: %#v", msg)
+			tr.safeTLogf("message received", "msg", msg)
 
 			tr.mx.Lock()
 			tr.check(msg)
@@ -354,7 +353,7 @@ func (tr *TestReceiver) Pass() (int, bool) {
 
 			ok := v.Satisfied(tr.testEnded)
 			if !ok && tr.testEnded {
-				tr.safeTLogf("%v is not satisfied", v)
+				tr.safeTLogf("expectation is not satisfied", "expectation", v)
 			}
 			return ok
 		})
@@ -368,9 +367,13 @@ func (tr *TestReceiver) finish() (done bool, failed bool) {
 	if fails > 0 {
 		tr.mx.Lock()
 		defer tr.mx.Unlock()
-		tr.safeTLogf("%d expectation failures\r", fails)
+		tr.safeTLogf("expectation failures", "count", fails)
 		for i, f := range tr.failures {
-			tr.safeTLogf("Failure %d: [Expect: %s] [Reason: %s] [Match: %v] [Msg: %+v]", i, f.Exp.Name(), f.Reason, f.Match, f.Msg)
+			tr.safeTLogf("expectation failure", "failure_cnt",
+				i, "name", f.Exp.Name(),
+				"reason", f.Reason,
+				"match", f.Match,
+				"msg", f.Msg)
 		}
 		if !tr.noFail {
 			tr.t.Fail()
