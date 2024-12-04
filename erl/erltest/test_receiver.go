@@ -27,7 +27,7 @@ import (
 )
 
 var (
-	DefaultReceiverTimeout time.Duration = chronos.Dur("10s")
+	DefaultReceiverTimeout time.Duration = chronos.Dur("5m")
 	DefaultWaitTimeout     time.Duration = chronos.Dur("5s")
 )
 
@@ -42,12 +42,15 @@ type TestDependency interface {
 type receiverOptions struct {
 	timeout     time.Duration
 	waitTimeout time.Duration
+	waitExit    time.Duration
 	noFail      bool
 	name        string
 	logger      *slog.Logger
 	parent      erl.PID
 }
 
+// Deprecated: This is now set by using [testing.T.Deadline()]
+//
 // Specify how long the test reciever should run for before stopping.
 // this needs to be set otherwise tests will hang until exceptions are matched or
 // the 10min Go default is reached. See [DefaultReceiverTimeout]
@@ -64,7 +67,8 @@ func ReceiverTimeout(t time.Duration) ReceiverOpt {
 func WaitTimeout(t time.Duration) ReceiverOpt {
 	return func(ro receiverOptions) receiverOptions {
 		ro.waitTimeout = t
-		ro.timeout = t * 2
+		// if we don't pass within 3 times of the waittimeout, we fail
+		ro.waitExit = t * 3
 		return ro
 	}
 }
@@ -108,6 +112,7 @@ func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 	rOpts := receiverOptions{
 		timeout:     DefaultReceiverTimeout,
 		waitTimeout: DefaultWaitTimeout,
+		waitExit:    DefaultWaitTimeout * 3,
 		name:        fmt.Sprintf("%s-test-receiver", xid.New().String()),
 		parent:      erl.RootPID(),
 	}
@@ -206,7 +211,6 @@ func (tr *TestReceiver) safeTError(format string, args ...any) {
 }
 
 func (tr *TestReceiver) Receive(self erl.PID, inbox <-chan any) error {
-	// tr.setSelf(self)
 	for {
 		select {
 		case msg, ok := <-inbox:
@@ -352,9 +356,6 @@ func (tr *TestReceiver) Pass() (int, bool) {
 			}
 
 			ok := v.Satisfied(tr.testEnded)
-			if !ok && tr.testEnded {
-				tr.safeTLogf("expectation is not satisfied", "expectation", v)
-			}
 			return ok
 		})
 	}
@@ -390,22 +391,33 @@ func (tr *TestReceiver) finish() (done bool, failed bool) {
 func (tr *TestReceiver) Wait() {
 	now := time.Now()
 	for {
-		if time.Since(now) > tr.opts.waitTimeout {
-			tr.safeTLogf("test ended, checking expectations a final time")
-			tr.testEnded = true
-			passed, _ := tr.finish()
-			if !tr.noFail && !passed {
-				tr.safeTError("Wait(): timeout reached")
-			}
+
+		if time.Since(now) > tr.opts.waitExit {
+			tr.log.Info("test timed out waiting for expectations to be fulfilled")
+			tr.finish()
 			return
 		}
 
-		// no failures and all passed, return so test ends
-		passed, failed := tr.finish()
+		if time.Since(now) > tr.opts.waitTimeout {
+			tr.testEnded = true
+			_, passed := tr.Pass()
+			if passed {
+				tr.finish()
+				return
+			}
+			continue
+		}
+
+		failures, passed := tr.Pass()
+		//  all passed, return so test ends
 		if passed {
+			tr.finish()
 			return
 		}
-		if failed {
+
+		// we had a failure before the waitTimeout, so exit
+		if failures > 0 {
+			tr.finish()
 			return
 		}
 		time.Sleep(time.Millisecond)
