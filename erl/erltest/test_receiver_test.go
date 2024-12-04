@@ -88,10 +88,10 @@ func TestReceiver_Expect_AnyTimesPassesIfNoMatch(t *testing.T) {
 func TestReceiver_Expect_AnyTimesPassesIfMatch(t *testing.T) {
 	testPID, tr := erltest.NewReceiver(t)
 
-	foo := "bar"
+	foo := make(chan string, 1)
 
 	tr.Expect(testMsg1{}, expect.Expect(func(arg erltest.ExpectArg) bool {
-		foo = "baz"
+		foo <- "baz"
 		return true
 	}, expect.AnyTimes()))
 	tr.Expect(testMsg2{}, expect.Expect(func(arg erltest.ExpectArg) bool {
@@ -102,8 +102,9 @@ func TestReceiver_Expect_AnyTimesPassesIfMatch(t *testing.T) {
 	erl.Send(testPID, testMsg2{})
 
 	tr.Wait()
+	result := <-foo
 
-	assert.Equal(t, foo, "baz")
+	assert.Equal(t, result, "baz")
 }
 
 func TestReceiver_Expect_AnyTimePassesImmediatelyWithNoOtherExpectations(t *testing.T) {
