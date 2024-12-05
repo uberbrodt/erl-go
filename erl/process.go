@@ -92,25 +92,23 @@ func (p *Process) run() {
 		p.done <- runnableExitReason
 		close(p.done)
 	}()
+	sigChannel := p.receive.Channel()
 	for {
 		select {
 		// this happens when the Runnable exits
 		case exitReason := <-p.done:
 			// if we're in status running, it means the runnable exited, so we need to
 			// perform an exit.
+			DebugPrintf("Runnable exited")
 			if p.getStatus() == running {
 				p.exit(exitReason)
 			}
 			return
 
-		default:
-			signal, ok, closed := p.receive.Pop()
-			if closed != nil {
-				DebugPrintf("process got inbox closed, should have exited before this.")
+		case signal, open := <-sigChannel:
+			if !open {
+				DebugPrintf("%v process got inbox closed, should have exited before this.", p)
 				return
-			}
-			if !ok {
-				continue
 			}
 			DebugPrintf("%v received %s signal\r", p.self(), signal.SignalName())
 			switch sig := signal.(type) {
@@ -202,6 +200,7 @@ func (p *Process) run() {
 
 func (p *Process) exit(e error) {
 	// set status to exiting so that our main loop doesn't send signals twice.
+	DebugPrintf("process %v exiting...", p)
 	p.setStatus(exiting)
 	if p.getName() != "" {
 		DebugPrintf("%v unregistering name: %s", p, p.getName())
@@ -225,6 +224,7 @@ func (p *Process) exit(e error) {
 		monit.pid.p.send(downSignal{proc: p.self(), ref: monit.ref, reason: exitReason})
 	}
 	p.exitReason = exitReason
+	DebugPrintf("%v closing runnableReceive", p)
 	p.runnableReceive.Close()
 	// wait until runnable has exited
 	<-p.done
