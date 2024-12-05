@@ -27,7 +27,8 @@ import (
 )
 
 var (
-	DefaultReceiverTimeout time.Duration = chronos.Dur("5m")
+	// DefaultReceiverTimeout time.Duration = chronos.Dur("9m59s")
+	DefaultReceiverTimeout time.Duration = chronos.Dur("9m59s")
 	DefaultWaitTimeout     time.Duration = chronos.Dur("5s")
 )
 
@@ -49,26 +50,28 @@ type receiverOptions struct {
 	parent      erl.PID
 }
 
-// Deprecated: This is now set by using [testing.T.Deadline()]
-//
-// Specify how long the test reciever should run for before stopping.
+// Specify how long the test receiver should run for before stopping.
 // this needs to be set otherwise tests will hang until exceptions are matched or
 // the 10min Go default is reached. See [DefaultReceiverTimeout]
+// If the '-timeout' option is greater or less than the [DefaultReceiverTimeout], then it
+// will be used instead. With that set, you shouldn't need to set this option unless
+// you explicitly want to end before your test timeout, such as debugging a broken test
+// or negative testing expect options.
 func ReceiverTimeout(t time.Duration) ReceiverOpt {
 	return func(ro receiverOptions) receiverOptions {
 		ro.timeout = t
+		ro.waitExit = t - time.Second
 		return ro
 	}
 }
 
-// Specify how long for [TestReciever.Wait] for all expectations to be met
-// see [DefaultWaitTimeout]. Will set the receiver timeout to double the wait
-// timeout so there's no need to call [ReceiverTimeout] in most cases.
+// Specify the minimum amount of time that [TestReciever.Wait] will execute for
+// before expectations like [expect.Times] or [expect.AtMost] will pass.
+// Wait will finish before this timeout if only options like [expect.AtMost] are used.
+// See [DefaultWaitTimeout] for the default. func WaitTimeout(t time.Duration) ReceiverOpt {
 func WaitTimeout(t time.Duration) ReceiverOpt {
 	return func(ro receiverOptions) receiverOptions {
 		ro.waitTimeout = t
-		// if we don't pass within 3 times of the waittimeout, we fail
-		ro.waitExit = t * 3
 		return ro
 	}
 }
@@ -111,11 +114,27 @@ func SetLogger(logger *slog.Logger) ReceiverOpt {
 func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 	rOpts := receiverOptions{
 		timeout:     DefaultReceiverTimeout,
+		waitExit:    DefaultReceiverTimeout - time.Second,
 		waitTimeout: DefaultWaitTimeout,
-		waitExit:    DefaultWaitTimeout * 3,
 		name:        fmt.Sprintf("%s-test-receiver", xid.New().String()),
 		parent:      erl.RootPID(),
 	}
+
+	if tout, ok := t.Deadline(); ok {
+		testExit := time.Until(tout) - time.Second
+		if testExit > DefaultReceiverTimeout {
+			fmt.Printf("-timeout greater than DefaultReceiverTimeout, adjusting: %s", testExit)
+			rOpts.timeout = testExit
+			rOpts.waitExit = testExit - time.Second
+		}
+
+		if testExit < DefaultReceiverTimeout {
+			fmt.Printf("-timeout less than DefaultReceiverTimeout, adjusting: %s", testExit)
+			rOpts.timeout = testExit
+			rOpts.waitExit = testExit - time.Second
+		}
+	}
+
 	for _, o := range opts {
 		rOpts = o(rOpts)
 	}
@@ -180,6 +199,18 @@ func (tr *TestReceiver) setExiting(status bool) {
 	tr.exiting = status
 }
 
+func (tr *TestReceiver) getTestEnded() bool {
+	defer tr.selfmx.RUnlock()
+	tr.selfmx.RLock()
+	return tr.testEnded
+}
+
+func (tr *TestReceiver) setTestEnded(status bool) {
+	defer tr.selfmx.Unlock()
+	tr.selfmx.Lock()
+	tr.testEnded = status
+}
+
 func (tr *TestReceiver) getSelf() erl.PID {
 	defer tr.selfmx.RUnlock()
 	tr.selfmx.RLock()
@@ -232,6 +263,9 @@ func (tr *TestReceiver) Receive(self erl.PID, inbox <-chan any) error {
 			tr.mx.Unlock()
 		case <-time.After(tr.opts.timeout):
 			tr.safeTError("receive timeout")
+			// end test and call finish to print the expectations that didn't pass
+			tr.setTestEnded(true)
+			tr.finish()
 
 			return exitreason.Timeout
 		}
@@ -355,7 +389,7 @@ func (tr *TestReceiver) Pass() (int, bool) {
 				return acc
 			}
 
-			ok := v.Satisfied(tr.testEnded)
+			ok := v.Satisfied(tr.getTestEnded())
 			return ok
 		})
 	}
@@ -390,6 +424,9 @@ func (tr *TestReceiver) finish() (done bool, failed bool) {
 // and want fail if your expecations don't pass
 func (tr *TestReceiver) Wait() {
 	now := time.Now()
+	// we use a local variable here so we don't increase lock contentention calling
+	// tr.setTestEnded every iteration
+	var testEnded bool
 	for {
 
 		if time.Since(now) > tr.opts.waitExit {
@@ -399,7 +436,10 @@ func (tr *TestReceiver) Wait() {
 		}
 
 		if time.Since(now) > tr.opts.waitTimeout {
-			tr.testEnded = true
+			if !testEnded {
+				tr.setTestEnded(true)
+				testEnded = true
+			}
 			_, passed := tr.Pass()
 			if passed {
 				tr.finish()
