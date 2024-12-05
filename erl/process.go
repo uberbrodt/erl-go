@@ -71,14 +71,7 @@ func (p *Process) run() {
 		c := make(chan any)
 
 		go func() {
-			for {
-				// the [p.runnableReceive] will be closed by [exit] so even in the event of a
-				// runnable panicking, this channel will be closed
-				msg, ok, closed := p.runnableReceive.Pop()
-				if closed != nil {
-					close(c)
-					return
-				}
+			for msg, ok := range p.runnableReceive.Iter() {
 				if !ok {
 					continue
 				}
