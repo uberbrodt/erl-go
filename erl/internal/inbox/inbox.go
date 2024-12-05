@@ -17,12 +17,15 @@ type Inbox[M any] struct {
 // Create an Inbox that will store messages of type [M].
 // An Inbox is written to using the `Enqueue` method, which will
 // append itself to the end of a message queue. To read these messages,
-// there are two methods:
+// there are four methods:
 //
 //  1. Calling [Pop], which will return one message at a time.
-//  2. Call [Receive], which will return a channel that will receive a message one at a time. This
-//     method is useful if you expect to call [Pop] in a loop or if you want to have multiple consumers
-//     of the inbox and order is not important (a version of the competeing consumers pattern).
+//  2. Calling [BlockingPop], which will wait until there is a message available or the inbox is closed.
+//  3. A for-range loop with [Iter]
+//  4. [Channel], which will return a channel that will receive a message one at a time.
+//
+// All of the options are roughly equivalent in performance and are safe for concurrent
+// use. Options three and four are probably the most useful for concurrent programs.
 func New[M any]() *Inbox[M] {
 	i := &Inbox[M]{
 		msgQ: make([]M, 0, 10),
@@ -97,6 +100,21 @@ func (i *Inbox[M]) BlockingPop() (item M, ok bool, closed error) {
 	return
 }
 
+func (i *Inbox[M]) Channel() <-chan M {
+	c := make(chan M)
+
+	go func() {
+		for item, ok := range i.Iter() {
+			if !ok {
+				continue
+			}
+			c <- item
+		}
+		close(c)
+	}()
+	return c
+}
+
 // this is an Iterator function that can be used with a range loop like so:
 //
 //	for item, ok := range ibox.Iter() {
@@ -122,6 +140,7 @@ func (i *Inbox[M]) Iter() iter.Seq2[M, bool] {
 				return
 			}
 			if !ok {
+				// no message so we wait
 				c.Wait()
 				item2, ok2, closed := i.Pop()
 				if closed != nil {
@@ -131,7 +150,11 @@ func (i *Inbox[M]) Iter() iter.Seq2[M, bool] {
 					return
 				}
 
+				// get next message
+				continue
+
 			}
+			// got a message so no reason to wait
 			if !yield(item, ok) {
 				return
 			}
@@ -147,10 +170,14 @@ func (i *Inbox[M]) Size() int {
 	return len(i.msgQ)
 }
 
+// closees all iterators and channels associated from this inbox, and prevents
+// any messages from being queued/dequeued. [BlockingPop] will also return.
 func (i *Inbox[M]) Close() {
 	i.mx.Lock()
 	defer i.mx.Unlock()
 	// shut down the receiver go routines
+
+	i.cond.Broadcast()
 	close(i.done)
 	i.closed = true
 }

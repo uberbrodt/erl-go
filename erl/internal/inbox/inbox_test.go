@@ -179,3 +179,36 @@ func TestIter(t *testing.T) {
 	ibox.Close()
 	<-ended
 }
+
+func TestChannel(t *testing.T) {
+	sig := make(chan int)
+	ended := make(chan struct{})
+
+	ibox := inbox.New[int]()
+
+	go func() {
+		c := ibox.Channel()
+		for item := range c {
+			t.Logf("got value: %d", item)
+			sig <- item
+		}
+		close(ended)
+	}()
+
+	t.Log("enqueue item 1")
+	ibox.Enqueue(1)
+	t.Log("enqueue item 2")
+	ibox.Enqueue(2)
+	t.Log("close inbox")
+
+	t.Log("waiting for item 1")
+	item1 := <-sig
+	assert.Equal(t, item1, 1)
+
+	t.Log("waiting for item 2")
+	item2 := <-sig
+	assert.Equal(t, item2, 2)
+	t.Log("closing inbox")
+	ibox.Close()
+	<-ended
+}
