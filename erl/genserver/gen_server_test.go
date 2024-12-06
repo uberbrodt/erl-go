@@ -212,6 +212,7 @@ func TestGenServer_Init_RegisterNameAlreadyRegistered(t *testing.T) {
 }
 
 func TestGenServer_Init_ReturnsStop(t *testing.T) {
+	// TODO: this test is flakey now?
 	trPID, tr := erl.NewTestReceiver(t)
 	args := TestGSArgs{
 		count: 2,

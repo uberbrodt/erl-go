@@ -68,6 +68,7 @@ func TestStartLink_InitExitExceptionStop(t *testing.T) {
 }
 
 func TestStartLink_InitIgnoreStop(t *testing.T) {
+	// TODO: fix flakey test (or find the bug?)
 	tr := &TestReceiver{
 		c: make(chan any, 500),
 		t: t,

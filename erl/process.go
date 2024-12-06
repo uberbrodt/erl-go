@@ -229,6 +229,7 @@ func (p *Process) exit(e error) {
 	// wait until runnable has exited
 	<-p.done
 	p.setStatus(exited)
+	p.receive.Close()
 }
 
 func (p *Process) self() PID {
