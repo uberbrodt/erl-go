@@ -40,8 +40,10 @@ func (s downSignal) SignalName() string {
 
 // MONITOR
 type monitorSignal struct {
-	ref       Ref
-	monitor   PID
+	ref Ref
+	// the pid that is monitoring
+	monitor PID
+	// the pid to be monitored
 	monitored PID
 }
 

@@ -241,3 +241,59 @@ func Test_Unlink_RemovesLink(t *testing.T) {
 	assert.Equal(t, IsAlive(task), false)
 	assert.Equal(t, IsAlive(srv), true)
 }
+
+func Test_MonitorCleansUp(t *testing.T) {
+	// TODO: in order to make this test work I have to add _another_ mutex
+	// to [process] and I don't think it's worth it.
+	t.Skip()
+	var wg sync.WaitGroup
+	runnableDone := make(chan int)
+
+	monit := func(self PID, _ chan<- int, inbox <-chan any) error {
+		for range inbox {
+			time.Sleep(time.Second)
+		}
+		t.Log("Finished runnable")
+		return exitreason.Normal
+	}
+
+	watcherFn := func(self PID, _ chan<- int, inbox <-chan any) error {
+		wg.Add(1)
+		for anymsg := range inbox {
+			switch msg := anymsg.(type) {
+			case DownMsg:
+				t.Logf("got down msg: %+v", msg)
+				wg.Done()
+				return exitreason.Normal
+			default:
+				t.Logf("got other msg: %+v", msg)
+			}
+		}
+		t.Log("Finished runnable")
+		return exitreason.Normal
+	}
+
+	watcher := Spawn(&TestSimpleRunnable{t, watcherFn, runnableDone})
+	monitor, _ := SpawnMonitor(watcher, &TestSimpleRunnable{t, monit, runnableDone})
+	monitee, _ := SpawnMonitor(monitor,
+		&TestSimpleRunnable{t, monit, runnableDone})
+
+	var waitForMonitors sync.WaitGroup
+	go func() {
+		for {
+			if len(monitee.p.monitors) == 1 {
+				t.Logf("monitee.monitors is 1")
+				waitForMonitors.Done()
+			}
+		}
+	}()
+
+	// assert.Equal(t, len(monitee.p.monitors), 1)
+
+	Exit(RootPID(), monitor, exitreason.Normal)
+
+	// wait for the downmsg to be delivered to watcher
+	wg.Wait()
+
+	assert.Equal(t, len(monitee.p.monitors), 1)
+}

@@ -17,6 +17,7 @@ import (
 
 var nextProcessID atomic.Int64
 
+// this stores monitors that other processes take on a process
 type pMonitor struct {
 	pid PID
 	ref Ref
@@ -30,6 +31,7 @@ type Process struct {
 	done            chan error
 	links           []PID
 	monitors        []pMonitor
+	cleanupMonitors []pMonitor
 	monitoring      map[Ref]PID
 	_status         processStatus
 	exitReason      *exitreason.S
@@ -105,6 +107,7 @@ func (p *Process) run() {
 			}
 			return
 
+		// We got a signal from another process
 		case signal, open := <-sigChannel:
 			if !open {
 				DebugPrintf("%v process got inbox closed, should have exited before this.", p)
@@ -118,9 +121,11 @@ func (p *Process) run() {
 					sig.monitor.p.send(downSignal{proc: p.self(), ref: sig.ref, reason: exitreason.NoProc})
 					continue
 				}
+				// this is a monitor we took of another process
 				if sig.monitor.Equals(p.self()) {
 					p.monitoring[sig.ref] = sig.monitored
 				} else {
+					// this is a monitor another process took of us
 					// log.Info().Msgf("Monitors taken: %+v", b)
 					p.monitors = append(p.monitors, pMonitor{pid: sig.monitor, ref: sig.ref})
 				}
@@ -151,6 +156,7 @@ func (p *Process) run() {
 					Logger.Printf("%v received an unlink signal for %+v, but one could not be found\r", p.self(), sig.pid)
 				}
 
+			// all message signals go to the runnable
 			case messageSignal:
 				if p.getStatus() == running {
 					p.runnableReceive.Enqueue(sig.term)
@@ -163,6 +169,7 @@ func (p *Process) run() {
 						Logger.Printf("%v, got a DOWN signal but could not match Ref %+v\r", p.self(), sig)
 						break
 					}
+					// convert to an [erl.DownMsg] and send to the Runnable
 					p.runnableReceive.Enqueue(downMsgfromSignal(sig))
 					// for custom message types
 					// this should happen as a result of a linked process existing or someone calling [Exit] on the process.
@@ -220,9 +227,16 @@ func (p *Process) exit(e error) {
 	for _, linked := range p.links {
 		linked.p.send(exitSignal{sender: p.self(), receiver: linked, reason: exitReason, link: true})
 	}
+	// notify processes monitoring us that we're down
 	for _, monit := range p.monitors {
 		monit.pid.p.send(downSignal{proc: p.self(), ref: monit.ref, reason: exitReason})
 	}
+	// notify processes we're monitoring that we're not monitoring them anymore
+	// this is important to make sure this process is GC'd
+	for ref, monitPID := range p.monitoring {
+		monitPID.p.send(demonitorSignal{ref: ref, origin: p.self()})
+	}
+
 	p.exitReason = exitReason
 	DebugPrintf("%v closing runnableReceive", p)
 	p.runnableReceive.Close()
@@ -230,6 +244,13 @@ func (p *Process) exit(e error) {
 	<-p.done
 	p.setStatus(exited)
 	p.receive.Close()
+	// null out the maps so that we don't hold references that would
+	// prevent the garbage collector from dereferencing
+	p.links = nil
+	p.monitors = nil
+	p.monitoring = nil
+	// p.receive = nil
+	// p.runnableReceive = nil
 }
 
 func (p *Process) self() PID {
@@ -283,6 +304,9 @@ func (p *Process) getStatus() processStatus {
 	p.statusMutex.RLock()
 	return p._status
 }
+
+// func (p *Process) getMonitors() []pMonitor {
+// }
 
 func (p *Process) setStatus(newStatus processStatus) {
 	p.statusMutex.Lock()
