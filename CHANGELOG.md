@@ -1,5 +1,48 @@
 # Changelog
 
+##0.18.0 2024-12-01
+
+A fairly large release, focused on performance and improving the testing
+experience
+
+
+
+### Added
+
+- inbox.Inbox struct for replacing the buffered channels in `erl.process`.
+- `erltest.TestReceiver.StartSupervised` will run a start link function with the
+  TestReceiver PID and keep track of the created PID for cleanup in the `Stop()`
+  function.
+- Added an `exitwaiter`, which accepts a `sync.WaitGroup` and a pid to wait on.
+  It will call `Done()` on the waitgroup whenever it receives the DownSignal
+  for the `pid`.
+
+### Changed
+
+- erltest.WaitTimeout does not stop the testreceiver. It now just indicates how
+  long until the assertions `Times`, `Absolute` and `AtMost` are considered
+  "fulfilled". So if you have an expectation of receiving a message
+  `expect.Times(3)`, if you receiver a 4th messages AFTER the WaitTimeout, your
+  test will not fail. This is a compromise for a hard problem to solve, given
+  that test runtimes vary widely between developer computers and CI.
+- erltest.TestReceiver has an "adaptive" timeout for test exit now. If the
+  "-timeout" value is  less than the DefaultReceiverTimeout, it will be used
+  instead. The goal is always exit before the timeout so that we print the
+  missed expectations.
+- Don't use the `t.Log` calls inside the TestReceiver process; it's very
+  frustrating for a test to fail because it logged some meaningless information
+  after the test ended.
+
+
+
+### Fixed
+
+- erltest.TestReceiver.Stop() is now synchronous and returns after all linked
+processes and the test receiver returns.
+
+
+
+
 
 ##[0.16.1] 2024-07-31
 

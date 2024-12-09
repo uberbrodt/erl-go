@@ -330,15 +330,16 @@ func (tr *TestReceiver) WaitOn(e ...Expectation) {
 	}
 }
 
-func (tr *TestReceiver) Join(pid erl.PID, td TestDependency) {
-	// if the pid is not nil, we should link to this process so that it will exit when
-	// this test receiver exits.
-	if !pid.IsNil() {
-		erl.Link(tr.getSelf(), pid)
-	}
-
-	tr.testdeps = append(tr.testdeps, td)
-}
+// TODO: implement
+// func (tr *TestReceiver) Join(pid erl.PID, td TestDependency) {
+// 	// if the pid is not nil, we should link to this process so that it will exit when
+// 	// this test receiver exits.
+// 	if !pid.IsNil() {
+// 		erl.Link(tr.getSelf(), pid)
+// 	}
+//
+// 	tr.testdeps = append(tr.testdeps, td)
+// }
 
 // starts the process via [startLink] with the TestReceiver as the parent. If [startLink] returns
 // an error the test is failed. The process will be synchronously killed when calling [Stop]
