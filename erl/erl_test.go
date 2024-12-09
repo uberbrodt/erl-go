@@ -179,7 +179,6 @@ func Test_Link_SendsExitsWhenPanic(t *testing.T) {
 		t.Log("Finished runnable")
 		runnableDone <- 1
 		panic("my error")
-		// return nil
 	}
 
 	srvFn := func(ts *TestServer, self PID, inbox <-chan any) error {
@@ -243,9 +242,7 @@ func Test_Unlink_RemovesLink(t *testing.T) {
 }
 
 func Test_MonitorCleansUp(t *testing.T) {
-	// TODO: in order to make this test work I have to add _another_ mutex
-	// to [process] and I don't think it's worth it.
-	t.Skip()
+	t.Skip("in order to make this test work I have to add _another_ mutex to [process] and I don't think it's worth it.")
 	var wg sync.WaitGroup
 	runnableDone := make(chan int)
 
@@ -288,11 +285,8 @@ func Test_MonitorCleansUp(t *testing.T) {
 		}
 	}()
 
-	// assert.Equal(t, len(monitee.p.monitors), 1)
-
 	Exit(RootPID(), monitor, exitreason.Normal)
 
-	// wait for the downmsg to be delivered to watcher
 	wg.Wait()
 
 	assert.Equal(t, len(monitee.p.monitors), 1)

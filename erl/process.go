@@ -126,7 +126,6 @@ func (p *Process) run() {
 					p.monitoring[sig.ref] = sig.monitored
 				} else {
 					// this is a monitor another process took of us
-					// log.Info().Msgf("Monitors taken: %+v", b)
 					p.monitors = append(p.monitors, pMonitor{pid: sig.monitor, ref: sig.ref})
 				}
 			case demonitorSignal:
@@ -245,12 +244,10 @@ func (p *Process) exit(e error) {
 	p.setStatus(exited)
 	p.receive.Close()
 	// null out the maps so that we don't hold references that would
-	// prevent the garbage collector from dereferencing
+	// prevent garbage collection of finished processes.
 	p.links = nil
 	p.monitors = nil
 	p.monitoring = nil
-	// p.receive = nil
-	// p.runnableReceive = nil
 }
 
 func (p *Process) self() PID {
@@ -305,9 +302,6 @@ func (p *Process) getStatus() processStatus {
 	return p._status
 }
 
-// func (p *Process) getMonitors() []pMonitor {
-// }
-
 func (p *Process) setStatus(newStatus processStatus) {
 	p.statusMutex.Lock()
 	defer p.statusMutex.Unlock()
@@ -330,9 +324,8 @@ func (p *Process) setName(name Name) {
 
 func NewProcess(r Runnable) *Process {
 	return &Process{
-		id:       nextProcessID.Add(1),
-		runnable: r,
-		// receive:         make(chan Signal),
+		id:              nextProcessID.Add(1),
+		runnable:        r,
 		receive:         inbox.New[Signal](),
 		runnableReceive: inbox.New[any](),
 		done:            make(chan error),
