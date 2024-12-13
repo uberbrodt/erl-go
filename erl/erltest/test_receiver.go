@@ -491,6 +491,11 @@ func (tr *TestReceiver) finish() (done bool, failed bool) {
 			return false, true
 		}
 	}
+
+	if !passed && !tr.noFail && fails == 0 {
+		tr.t.Errorf("An expectation was un-satisifed, but did not report a failure message. This is probably an atLeast expectation that did not meet the minimum invocations. In the future, these will be reported like other expectation failures.")
+	}
+
 	return passed, false
 }
 
