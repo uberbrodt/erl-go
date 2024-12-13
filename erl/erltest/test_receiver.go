@@ -189,10 +189,10 @@ type TestReceiver struct {
 	mx     sync.RWMutex
 	selfmx sync.RWMutex
 	// TODO: rename to waitExpired
-	testEnded bool
-	opts      receiverOptions
-	exiting   bool
-	log       *slog.Logger
+	waitExpired bool
+	opts        receiverOptions
+	exiting     bool
+	log         *slog.Logger
 }
 
 func (tr *TestReceiver) getExiting() bool {
@@ -208,17 +208,17 @@ func (tr *TestReceiver) setExiting(status bool) {
 }
 
 // TODO: rename to getWaitExpired
-func (tr *TestReceiver) getTestEnded() bool {
+func (tr *TestReceiver) getWaitExpired() bool {
 	defer tr.selfmx.RUnlock()
 	tr.selfmx.RLock()
-	return tr.testEnded
+	return tr.waitExpired
 }
 
 // TODO: rename to setWaitExpired
-func (tr *TestReceiver) setTestEnded(status bool) {
+func (tr *TestReceiver) setWaitExpired(status bool) {
 	defer tr.selfmx.Unlock()
 	tr.selfmx.Lock()
-	tr.testEnded = status
+	tr.waitExpired = status
 }
 
 func (tr *TestReceiver) getSelf() erl.PID {
@@ -274,7 +274,7 @@ func (tr *TestReceiver) Receive(self erl.PID, inbox <-chan any) error {
 		case <-time.After(tr.opts.timeout):
 			tr.safeTError("receive timeout")
 			// end test and call finish to print the expectations that didn't pass
-			tr.setTestEnded(true)
+			tr.setWaitExpired(true)
 			tr.finish()
 
 			return exitreason.Timeout
@@ -292,7 +292,7 @@ func (tr *TestReceiver) check(msg any) {
 			if castMsgT == match {
 				if len(exSlice) > 0 {
 					var ex Expectation
-					if exSlice[0].Satisfied(tr.getTestEnded()) && len(exSlice) > 1 {
+					if exSlice[0].Satisfied(tr.getWaitExpired()) && len(exSlice) > 1 {
 						ex = exSlice[1]
 						tr.castExpects[match] = exSlice[1:]
 					} else {
@@ -312,7 +312,7 @@ func (tr *TestReceiver) check(msg any) {
 			if callMsgT == match {
 				if len(exSlice) > 0 {
 					var ex callExpectation
-					if exSlice[0].e.Satisfied(tr.getTestEnded()) && len(exSlice) > 1 {
+					if exSlice[0].e.Satisfied(tr.getWaitExpired()) && len(exSlice) > 1 {
 						ex = exSlice[1]
 						tr.callExpects[match] = exSlice[1:]
 					} else {
@@ -340,7 +340,7 @@ func (tr *TestReceiver) check(msg any) {
 					var ex Expectation
 					// if the current head is satisifed, then we pop it off
 					// and put the next expectation in pole position
-					if exSlice[0].Satisfied(tr.getTestEnded()) && len(exSlice) > 1 {
+					if exSlice[0].Satisfied(tr.getWaitExpired()) && len(exSlice) > 1 {
 						ex = exSlice[1]
 						tr.msgExpects[match] = exSlice[1:]
 					} else {
@@ -464,7 +464,7 @@ func (tr *TestReceiver) Pass() (int, bool) {
 				return acc
 			}
 
-			ok := v.Satisfied(tr.getTestEnded())
+			ok := v.Satisfied(tr.getWaitExpired())
 			return ok
 		})
 	}
@@ -517,7 +517,7 @@ func (tr *TestReceiver) Wait() {
 
 		if time.Since(now) > tr.opts.waitTimeout {
 			if !testEnded {
-				tr.setTestEnded(true)
+				tr.setWaitExpired(true)
 				testEnded = true
 			}
 			_, passed := tr.Pass()

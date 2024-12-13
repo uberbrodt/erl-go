@@ -20,18 +20,18 @@ type Expectation struct {
 // and immediately if it encounters a failure.
 //
 // If [testEnded] is true, checks that should never be executed (ie: Times(0)) will be evaluated.
-func (ex *Expectation) Satisfied(testEnded bool) bool {
+func (ex *Expectation) Satisfied(waitExpired bool) bool {
 	for _, child := range ex.children {
-		if ok := doSatisifed(child, testEnded); !ok {
+		if ok := doSatisifed(child, waitExpired); !ok {
 			return false
 		}
 	}
-	return doSatisifed(ex, testEnded)
+	return doSatisifed(ex, waitExpired)
 }
 
-func doSatisifed(ex *Expectation, testEnded bool) bool {
+func doSatisifed(ex *Expectation, waitExpired bool) bool {
 	// these two types can only be evaluated at test end
-	if (ex.opts.exType == exact || ex.opts.exType == atMost) && !testEnded {
+	if (ex.opts.exType == exact || ex.opts.exType == atMost) && !waitExpired {
 		return false
 	}
 
