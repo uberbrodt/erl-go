@@ -657,3 +657,121 @@ func TestReceiver_StopKillsDeps(t *testing.T) {
 	assert.Assert(t, erl.IsAlive(pid3) == false)
 	assert.Assert(t, erl.IsAlive(pid4) == false)
 }
+
+func TestReceiver_InfoMsgs_MultipleExpectations(t *testing.T) {
+	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(5*time.Second))
+
+	tr.Expect(testMsg1{}, expect.Equals(t, testMsg1{foo: "bar"}, expect.AtLeast(2)))
+	tr.Expect(testMsg1{}, expect.Equals(t, testMsg1{foo: "foo"}))
+
+	erl.Send(testPID, testMsg1{foo: "bar"})
+	erl.Send(testPID, testMsg1{foo: "bar"})
+	erl.Send(testPID, testMsg1{foo: "foo"})
+
+	tr.Wait()
+
+	f, pass := tr.Pass()
+	assert.Assert(t, pass)
+	assert.Assert(t, f == 0)
+}
+
+func TestReceiver_InfoMsgs_AbsoluteExpectationsWillNotBeRemovedUntilAfterWaitFail(t *testing.T) {
+	// Setting an absolute expectation in pole position means that
+	// it will not be removed until the wait timeout passes
+	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(5*time.Second), erltest.NoFail())
+
+	tr.Expect(testMsg1{}, expect.Equals(t, testMsg1{foo: "bar"}, expect.Times(2)))
+	tr.Expect(testMsg1{}, expect.Equals(t, testMsg1{foo: "foo"}))
+
+	erl.Send(testPID, testMsg1{foo: "bar"})
+	erl.Send(testPID, testMsg1{foo: "bar"})
+	erl.Send(testPID, testMsg1{foo: "foo"})
+
+	tr.Wait()
+
+	f, pass := tr.Pass()
+	assert.Assert(t, !pass)
+	assert.Assert(t, f == 1)
+}
+
+func TestReceiver_InfoMsgs_AbsoluteExpectationsWillNotBeRemovedUntilAfterWaitPass(t *testing.T) {
+	// Setting an absolute expectation in pole position means that
+	// it will not be removed until the wait timeout passes
+	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(5*time.Second), erltest.NoFail())
+
+	tr.Expect(testMsg1{}, expect.Equals(t, testMsg1{foo: "bar"}, expect.Times(2)))
+	tr.Expect(testMsg1{}, expect.Equals(t, testMsg1{foo: "foo"}))
+
+	erl.Send(testPID, testMsg1{foo: "bar"})
+	erl.Send(testPID, testMsg1{foo: "bar"})
+
+	go func() {
+		time.Sleep(time.Second * 6)
+		erl.Send(testPID, testMsg1{foo: "foo"})
+	}()
+
+	tr.Wait()
+
+	f, pass := tr.Pass()
+	assert.Assert(t, pass)
+	assert.Assert(t, f == 0)
+}
+
+func TestReceiver_CastMsgs_MultipleExpectations(t *testing.T) {
+	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(5*time.Second))
+
+	tr.ExpectCast(testMsg1{}, expect.Equals(t, testMsg1{foo: "bar"}, expect.AtLeast(2)))
+	tr.ExpectCast(testMsg1{}, expect.Equals(t, testMsg1{foo: "foo"}))
+
+	genserver.Cast(testPID, testMsg1{foo: "bar"})
+	genserver.Cast(testPID, testMsg1{foo: "bar"})
+	genserver.Cast(testPID, testMsg1{foo: "foo"})
+
+	tr.Wait()
+
+	f, pass := tr.Pass()
+	assert.Assert(t, pass)
+	assert.Assert(t, f == 0)
+}
+
+func TestReceiver_CastMsgs_AbsoluteExpectationsWillNotBeRemovedUntilAfterWaitFail(t *testing.T) {
+	// Setting an absolute expectation in pole position means that
+	// it will not be removed until the wait timeout passes
+	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(5*time.Second), erltest.NoFail())
+
+	tr.ExpectCast(testMsg1{}, expect.Equals(t, testMsg1{foo: "bar"}, expect.Times(2)))
+	tr.ExpectCast(testMsg1{}, expect.Equals(t, testMsg1{foo: "foo"}))
+
+	genserver.Cast(testPID, testMsg1{foo: "bar"})
+	genserver.Cast(testPID, testMsg1{foo: "bar"})
+	genserver.Cast(testPID, testMsg1{foo: "foo"})
+
+	tr.Wait()
+
+	f, pass := tr.Pass()
+	assert.Assert(t, !pass)
+	assert.Assert(t, f == 1)
+}
+
+func TestReceiver_CastMsgs_AbsoluteExpectationsWillNotBeRemovedUntilAfterWaitPass(t *testing.T) {
+	// Setting an absolute expectation in pole position means that
+	// it will not be removed until the wait timeout passes
+	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(5*time.Second), erltest.NoFail())
+
+	tr.ExpectCast(testMsg1{}, expect.Equals(t, testMsg1{foo: "bar"}, expect.Times(2)))
+	tr.ExpectCast(testMsg1{}, expect.Equals(t, testMsg1{foo: "foo"}))
+
+	genserver.Cast(testPID, testMsg1{foo: "bar"})
+	genserver.Cast(testPID, testMsg1{foo: "bar"})
+
+	go func() {
+		time.Sleep(time.Second * 6)
+		genserver.Cast(testPID, testMsg1{foo: "foo"})
+	}()
+
+	tr.Wait()
+
+	f, pass := tr.Pass()
+	assert.Assert(t, pass)
+	assert.Assert(t, f == 0)
+}

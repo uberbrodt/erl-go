@@ -138,8 +138,8 @@ func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 	for _, o := range opts {
 		rOpts = o(rOpts)
 	}
-	expectations := make(map[reflect.Type]Expectation)
-	castExpects := make(map[reflect.Type]Expectation)
+	expectations := make(map[reflect.Type][]Expectation)
+	castExpects := make(map[reflect.Type][]Expectation)
 	callExpects := make(map[reflect.Type]Expectation)
 	allExpects := make(map[string]Expectation)
 	testDeps := make([]TestDependency, 0)
@@ -168,8 +168,8 @@ func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 
 type TestReceiver struct {
 	t           *testing.T
-	msgExpects  map[reflect.Type]Expectation
-	castExpects map[reflect.Type]Expectation
+	msgExpects  map[reflect.Type][]Expectation
+	castExpects map[reflect.Type][]Expectation
 	callExpects map[reflect.Type]Expectation
 	allExpects  map[string]Expectation
 	failures    []*ExpectationFailure
@@ -178,9 +178,10 @@ type TestReceiver struct {
 	msgCnt      int
 	self        erl.PID
 	// if set to true, t.FailNow will not be called in [Pass] or [Wait]
-	noFail    bool
-	mx        sync.RWMutex
-	selfmx    sync.RWMutex
+	noFail bool
+	mx     sync.RWMutex
+	selfmx sync.RWMutex
+	// TODO: rename to waitExpired
 	testEnded bool
 	opts      receiverOptions
 	exiting   bool
@@ -199,12 +200,14 @@ func (tr *TestReceiver) setExiting(status bool) {
 	tr.exiting = status
 }
 
+// TODO: rename to getWaitExpired
 func (tr *TestReceiver) getTestEnded() bool {
 	defer tr.selfmx.RUnlock()
 	tr.selfmx.RLock()
 	return tr.testEnded
 }
 
+// TODO: rename to setWaitExpired
 func (tr *TestReceiver) setTestEnded(status bool) {
 	defer tr.selfmx.Unlock()
 	tr.selfmx.Lock()
@@ -278,12 +281,21 @@ func (tr *TestReceiver) check(msg any) {
 	switch v := msg.(type) {
 	case genserver.CastRequest:
 		castMsgT := reflect.TypeOf(v.Msg)
-		for match, ex := range tr.castExpects {
+		for match, exSlice := range tr.castExpects {
 			if castMsgT == match {
-				// pass in the unwrapped message
-				fail := tr.checkMatch(match, v.Msg, nil, ex)
-				if fail != nil {
-					tr.failures = append(tr.failures, fail)
+				if len(exSlice) > 0 {
+					var ex Expectation
+					if exSlice[0].Satisfied(tr.getTestEnded()) && len(exSlice) > 1 {
+						ex = exSlice[1]
+						tr.castExpects[match] = exSlice[1:]
+					} else {
+						ex = exSlice[0]
+					}
+					// pass in the unwrapped message
+					fail := tr.checkMatch(match, v.Msg, nil, ex)
+					if fail != nil {
+						tr.failures = append(tr.failures, fail)
+					}
 				}
 			}
 		}
@@ -299,11 +311,22 @@ func (tr *TestReceiver) check(msg any) {
 		}
 	default:
 		msgT := reflect.TypeOf(msg)
-		for match, ex := range tr.msgExpects {
+		for match, exSlice := range tr.msgExpects {
 			if msgT == match {
-				fail := tr.checkMatch(match, msg, nil, ex)
-				if fail != nil {
-					tr.failures = append(tr.failures, fail)
+				if len(exSlice) > 0 {
+					var ex Expectation
+					// if the current head is satisifed, then we pop it off
+					// and put the next expectation in pole position
+					if exSlice[0].Satisfied(tr.getTestEnded()) && len(exSlice) > 1 {
+						ex = exSlice[1]
+						tr.msgExpects[match] = exSlice[1:]
+					} else {
+						ex = exSlice[0]
+					}
+					fail := tr.checkMatch(match, msg, nil, ex)
+					if fail != nil {
+						tr.failures = append(tr.failures, fail)
+					}
 				}
 			}
 		}
@@ -358,14 +381,22 @@ func (tr *TestReceiver) StartSupervised(startLink func(self erl.PID) (erl.PID, e
 func (tr *TestReceiver) Expect(matchTerm any, e Expectation) {
 	t := reflect.TypeOf(matchTerm)
 	tr.allExpects[e.ID()] = e
-	tr.msgExpects[t] = e
+	if exSlice, ok := tr.msgExpects[t]; ok {
+		tr.msgExpects[t] = append(exSlice, e)
+	} else {
+		tr.msgExpects[t] = []Expectation{e}
+	}
 }
 
 // This is like [Expect] but is only tested against [genserver.CastRequest] messages.
 func (tr *TestReceiver) ExpectCast(matchTerm any, e Expectation) {
 	t := reflect.TypeOf(matchTerm)
 	tr.allExpects[e.ID()] = e
-	tr.castExpects[t] = e
+	if exSlice, ok := tr.castExpects[t]; ok {
+		tr.castExpects[t] = append(exSlice, e)
+	} else {
+		tr.castExpects[t] = []Expectation{e}
+	}
 }
 
 // This is like [Expect] but is only tested against [genserver.CallRequest] messages.
