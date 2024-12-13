@@ -1,6 +1,27 @@
 # Changelog
 
-##0.18.0 2024-12-01
+
+## 0.18.1 2024-12-13
+
+### Changed
+
+The `erltest.TestReceiver` Expect* methods will now add an expectation for each
+matchTerm, instead of overwriting the last one. This makes the expectation
+setting more similar to gomock, but with a caveats: If the first expectation
+is an absolute matcher like `expect.Times()`, then that expectation will match
+until the `Wait()` is done.
+
+
+### Added
+
+ExpectCallReply() was added to the `erltest.TestReceiver`. The big improvement
+over `ExpectCall()` is that you can specify a value to reply with when a match
+is executed. Before, all Call Expectations needed to be functions so that the
+replies could be sent.
+
+
+
+## 0.18.0 2024-12-01
 
 A fairly large release, focused on performance and improving the testing
 experience
@@ -48,7 +69,7 @@ processes and the test receiver returns.
 
 
 
-##[0.16.1] 2024-07-31
+## [0.16.1] 2024-07-31
 
 
 This moves [gensrv] and the [erltest] pkgs into a stable release. We're still
@@ -57,7 +78,7 @@ not to a 1.x release yet, but these interfaces should be pretty stable.
 ### Changed
 - `erl.Exit` no longer panics if the self or target are not running.
 
-##[0.16.0-rc.8] 2024-06-06
+## [0.16.0-rc.8] 2024-06-06
 
 ### Changed
 - make gensrv handlers cast free.
@@ -71,7 +92,7 @@ not to a 1.x release yet, but these interfaces should be pretty stable.
 
 
 
-##[0.16.0-rc.2] 2024-02-21
+## [0.16.0-rc.2] 2024-02-21
 
 ### Changed
 - cleanup expectation to use [Fail] method
@@ -107,7 +128,7 @@ Updates to `erltest`
 - `TestReceiver.WaitFor()` was replaced by the `WaitTimeout` option to the
   receiver.
 
-##[0.15.0] 2024-02-18
+## [0.15.0] 2024-02-18
 ### Added
 #### erltest
 - `ExpectCast` and `ExpectCall` methods for better mocking of genserver Cast and
@@ -119,12 +140,12 @@ Updates to `erltest`
 - don't log exit msgs at all in the test receivers. Related to very occasional
   panics caused by logging in test receiver after the test goroutine has ended.
 
-##[0.14.1] 2024-02-18
+## [0.14.1] 2024-02-18
 ### Fixed
 - bug in `erltest.Times` where numbers greater than 1 would be marked as
   failures, even if the exact count was reached.
 
-##[0.14.0] 2024-02-18
+## [0.14.0] 2024-02-18
 
 ### Added
  - `check` package that contains assertions that do not call `t.Test.FailNow()`,
@@ -134,7 +155,7 @@ Updates to `erltest`
 - `TestReceiver` killed if a `TestExpectation` panicked. Fixed.
 
 
-##[0.12.0] 2024-02-17
+## [0.12.0] 2024-02-17
 
 ### Changed
 - marked [erl.TestReceiver] as deprecated
@@ -149,7 +170,7 @@ Updates to `erltest`
    - At Least N Time
    - Received As Nth message (Absolute)
 
-##[0.11.0] 2024-02-16
+## [0.11.0] 2024-02-16
 
 ### Changed
 - Made `genserver` `CastRequest`, `CallRequest`, and `CallReply` are public
@@ -159,7 +180,7 @@ Updates to `erltest`
   have it stand-in for a GenServer.
 
 
-##[0.10.0] 2024-02-08
+## [0.10.0] 2024-02-08
 
 ### Added
 - exitreason.TestExit so testreceiver knows to shutdown

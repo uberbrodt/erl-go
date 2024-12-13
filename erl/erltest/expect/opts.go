@@ -21,7 +21,12 @@ const (
 
 type ExpectOpt func(o expectOpts) expectOpts
 
-// Expectation is satisifed only if it is invoed [n] times.
+// Expectation is satisifed only if it is invoked [n] times.
+//
+// NOTE: this is a blocking expectation, that will not be satisifed until
+// the wait timeout is expired in the [erltest.TestReceiver]. If setting multiple
+// expectations for the same msg, no subsequent expectations can match until after
+// the wait timeout.
 func Times(n int) ExpectOpt {
 	return func(o expectOpts) expectOpts {
 		o.times = n
@@ -31,7 +36,11 @@ func Times(n int) ExpectOpt {
 }
 
 // Expectation is satisifed if it is executed up to [n] times. Zero executions will also pass
-// WARNING: this expectation will cause your test to run until [WaitTimeout] is exceeded
+//
+// NOTE: this is a blocking expectation, that will not be satisifed until
+// the wait timeout is expired in the [erltest.TestReceiver]. If setting multiple
+// expectations for the same msg, no subsequent expectations can match until after
+// the wait timeout.
 func AtMost(n int) ExpectOpt {
 	return func(o expectOpts) expectOpts {
 		o.times = n
@@ -71,7 +80,11 @@ func AtLeast(n int) ExpectOpt {
 }
 
 // expectation will pass only if never matched. Alias for `Times(0)`
-// WARNING: this expectation will cause your test to run until [WaitTimeout] is exceeded
+//
+// NOTE: this is a blocking expectation, that will not be satisifed until
+// the wait timeout is expired in the [erltest.TestReceiver]. If setting multiple
+// expectations for the same msg, no subsequent expectations can match until after
+// the wait timeout.
 func Never() ExpectOpt {
 	return func(o expectOpts) expectOpts {
 		o.exType = exact
