@@ -775,3 +775,62 @@ func TestReceiver_CastMsgs_AbsoluteExpectationsWillNotBeRemovedUntilAfterWaitPas
 	assert.Assert(t, pass)
 	assert.Assert(t, f == 0)
 }
+
+func TestReceiver_CallMsgs_MultipleExpectations(t *testing.T) {
+	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(5*time.Second))
+
+	tr.ExpectCallReply(testMsg1{}, expect.Equals(t, testMsg1{foo: "bar"}, expect.AtLeast(2)), nil)
+	tr.ExpectCallReply(testMsg1{}, expect.Equals(t, testMsg1{foo: "foo"}), nil)
+
+	genserver.Call(erl.RootPID(), testPID, testMsg1{foo: "bar"}, time.Minute)
+	genserver.Call(erl.RootPID(), testPID, testMsg1{foo: "bar"}, time.Minute)
+	genserver.Call(erl.RootPID(), testPID, testMsg1{foo: "foo"}, time.Minute)
+
+	tr.Wait()
+
+	f, pass := tr.Pass()
+	assert.Assert(t, pass)
+	assert.Assert(t, f == 0)
+}
+
+func TestReceiver_CallMsgs_AbsoluteExpectationsWillNotBeRemovedUntilAfterWaitFail(t *testing.T) {
+	// Setting an absolute expectation in pole position means that
+	// it will not be removed until the wait timeout passes
+	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(5*time.Second), erltest.NoFail())
+
+	tr.ExpectCallReply(testMsg1{}, expect.Equals(t, testMsg1{foo: "bar"}, expect.Times(2)), nil)
+	tr.ExpectCallReply(testMsg1{}, expect.Equals(t, testMsg1{foo: "foo"}), nil)
+
+	genserver.Call(erl.RootPID(), testPID, testMsg1{foo: "bar"}, time.Minute)
+	genserver.Call(erl.RootPID(), testPID, testMsg1{foo: "bar"}, time.Minute)
+	genserver.Call(erl.RootPID(), testPID, testMsg1{foo: "foo"}, time.Minute)
+
+	tr.Wait()
+
+	f, pass := tr.Pass()
+	assert.Assert(t, !pass)
+	assert.Assert(t, f == 1)
+}
+
+func TestReceiver_CallMsgs_AbsoluteExpectationsWillNotBeRemovedUntilAfterWaitPass(t *testing.T) {
+	// Setting an absolute expectation in pole position means that
+	// it will not be removed until the wait timeout passes
+	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(5*time.Second), erltest.NoFail())
+
+	tr.ExpectCallReply(testMsg1{}, expect.Equals(t, testMsg1{foo: "bar"}, expect.Times(2)), nil)
+	tr.ExpectCallReply(testMsg1{}, expect.Equals(t, testMsg1{foo: "foo"}), nil)
+
+	genserver.Call(erl.RootPID(), testPID, testMsg1{foo: "bar"}, time.Minute)
+	genserver.Call(erl.RootPID(), testPID, testMsg1{foo: "bar"}, time.Minute)
+
+	go func() {
+		time.Sleep(time.Second * 6)
+		genserver.Call(erl.RootPID(), testPID, testMsg1{foo: "foo"}, time.Minute)
+	}()
+
+	tr.Wait()
+
+	f, pass := tr.Pass()
+	assert.Assert(t, pass)
+	assert.Assert(t, f == 0)
+}

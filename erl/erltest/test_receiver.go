@@ -27,10 +27,17 @@ import (
 )
 
 var (
+	// a signal value to indicate that the CallExpect should not reply to the caller
+	NoCallReply any = "\x07"
 	// DefaultReceiverTimeout time.Duration = chronos.Dur("9m59s")
 	DefaultReceiverTimeout time.Duration = chronos.Dur("9m59s")
 	DefaultWaitTimeout     time.Duration = chronos.Dur("5s")
 )
+
+type callExpectation struct {
+	e     Expectation
+	reply any
+}
 
 type ReceiverOpt func(ro receiverOptions) receiverOptions
 
@@ -140,7 +147,7 @@ func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 	}
 	expectations := make(map[reflect.Type][]Expectation)
 	castExpects := make(map[reflect.Type][]Expectation)
-	callExpects := make(map[reflect.Type]Expectation)
+	callExpects := make(map[reflect.Type][]callExpectation)
 	allExpects := make(map[string]Expectation)
 	testDeps := make([]TestDependency, 0)
 	deps := make([]erl.PID, 0)
@@ -170,7 +177,7 @@ type TestReceiver struct {
 	t           *testing.T
 	msgExpects  map[reflect.Type][]Expectation
 	castExpects map[reflect.Type][]Expectation
-	callExpects map[reflect.Type]Expectation
+	callExpects map[reflect.Type][]callExpectation
 	allExpects  map[string]Expectation
 	failures    []*ExpectationFailure
 	testdeps    []TestDependency
@@ -301,11 +308,27 @@ func (tr *TestReceiver) check(msg any) {
 		}
 	case genserver.CallRequest:
 		callMsgT := reflect.TypeOf(v.Msg)
-		for match, ex := range tr.callExpects {
+		for match, exSlice := range tr.callExpects {
 			if callMsgT == match {
-				fail := tr.checkMatch(match, v.Msg, &v.From, ex)
-				if fail != nil {
-					tr.failures = append(tr.failures, fail)
+				if len(exSlice) > 0 {
+					var ex callExpectation
+					if exSlice[0].e.Satisfied(tr.getTestEnded()) && len(exSlice) > 1 {
+						ex = exSlice[1]
+						tr.callExpects[match] = exSlice[1:]
+					} else {
+						ex = exSlice[0]
+					}
+
+					fail := tr.checkMatch(match, v.Msg, &v.From, ex.e)
+					// XXX: should we be replying if the expectation fails? I think
+					// yes, because this will likely cause the test to fail faster instead of
+					// genserver.Call or the whole test timing out
+					if ex.reply != NoCallReply {
+						genserver.Reply(v.From, ex.reply)
+					}
+					if fail != nil {
+						tr.failures = append(tr.failures, fail)
+					}
 				}
 			}
 		}
@@ -399,13 +422,33 @@ func (tr *TestReceiver) ExpectCast(matchTerm any, e Expectation) {
 	}
 }
 
+// Deprecated: use [ExpectCallReply] instead
 // This is like [Expect] but is only tested against [genserver.CallRequest] messages.
 // NOTE: You should use [genserver.Reply] to send a response to the [genserver.From], otherwise
 // the caller will timeout
 func (tr *TestReceiver) ExpectCall(matchTerm any, e Expectation) {
 	t := reflect.TypeOf(matchTerm)
 	tr.allExpects[e.ID()] = e
-	tr.callExpects[t] = e
+	if exSlice, ok := tr.callExpects[t]; ok {
+		tr.callExpects[t] = append(exSlice, callExpectation{e: e, reply: NoCallReply})
+	} else {
+		tr.callExpects[t] = []callExpectation{{e: e, reply: NoCallReply}}
+	}
+}
+
+// Sets an expectation about a [genserver.Call] for this TestReceiver. The [reply]
+// is the value that will be returned to the caller when a [matchTerm] msg is received.
+//
+// If you want to *not* send a reply (say you're testing Call timeouts), then set [reply]
+// to the signal value [NoCallReply].
+func (tr *TestReceiver) ExpectCallReply(matchTerm any, e Expectation, reply any) {
+	t := reflect.TypeOf(matchTerm)
+	tr.allExpects[e.ID()] = e
+	if exSlice, ok := tr.callExpects[t]; ok {
+		tr.callExpects[t] = append(exSlice, callExpectation{e: e, reply: reply})
+	} else {
+		tr.callExpects[t] = []callExpectation{{e: e, reply: reply}}
+	}
 }
 
 // returns the number of failed expectations and whether
