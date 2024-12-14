@@ -21,6 +21,13 @@ replies could be sent.
 
 
 
+### Fixed
+
+- `erltest.TestReceiver` was not always failing when one of the expecations
+failed. Unfortunately we can't indicate which exception failed until we do a
+refactor, but at least we'll fail now.
+
+
 ## 0.18.0 2024-12-01
 
 A fairly large release, focused on performance and improving the testing
