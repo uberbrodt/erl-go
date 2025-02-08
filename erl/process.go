@@ -4,10 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"runtime/debug"
+	"slices"
 	"sync"
 	"sync/atomic"
-
-	"golang.org/x/exp/slices"
 
 	"github.com/uberbrodt/fungo/fun"
 

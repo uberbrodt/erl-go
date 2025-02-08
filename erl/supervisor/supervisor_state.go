@@ -3,10 +3,9 @@ package supervisor
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
-
-	"golang.org/x/exp/slices"
 
 	"github.com/uberbrodt/erl-go/chronos"
 	"github.com/uberbrodt/erl-go/erl"

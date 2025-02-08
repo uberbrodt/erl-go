@@ -1,6 +1,15 @@
 # Changelog
 
 
+## NEXT
+
+### Changed
+- removed dependence on `exp` package. Only major changes was handling `iter.Seq` when using
+  the `maps` package.
+- upgraded deps
+- added a go.mod to `examples/basic`, making it a module.
+
+
 ## 0.18.1 2024-12-13
 
 ### Changed

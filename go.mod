@@ -1,12 +1,10 @@
 module github.com/uberbrodt/erl-go
 
-go 1.23.3
+go 1.23
 
 require (
-	github.com/rs/xid v1.5.0
+	github.com/google/go-cmp v0.6.0
+	github.com/rs/xid v1.6.0
 	github.com/uberbrodt/fungo v0.0.1
-	golang.org/x/exp v0.0.0-20231006140011-7918f672742d
-	gotest.tools/v3 v3.5.0
-        github.com/google/go-cmp v0.5.9
+	gotest.tools/v3 v3.5.1
 )
-

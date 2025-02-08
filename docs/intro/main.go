@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-	sched "sched"
 	"time"
 
 	"github.com/uberbrodt/erl-go/erl"
@@ -15,12 +14,10 @@ func (p P) Receive(self erl.PID, inbox <-chan any) error {
 	for {
 		select {
 		case _, ok := <-inbox:
-			sched.InstChAF(489626271746, inbox)
 			if !ok {
 				return nil
 			}
 		case <-time.After(3 * time.Second):
-			sched.InstChAF(489626271747, time.After(3*time.Second))
 			log.Printf("The time is: %s\n", time.Now().String())
 		}
 	}

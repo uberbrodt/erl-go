@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"reflect"
 	"sync"
@@ -15,8 +16,6 @@ import (
 	"time"
 
 	"github.com/rs/xid"
-	"github.com/uberbrodt/fungo/fun"
-	"golang.org/x/exp/maps"
 	"gotest.tools/v3/assert"
 
 	"github.com/uberbrodt/erl-go/chronos"
@@ -458,18 +457,17 @@ func (tr *TestReceiver) Pass() (int, bool) {
 	tr.mx.RLock()
 	defer tr.mx.RUnlock()
 	expects := maps.Values(tr.allExpects)
-	reducer := func(list []Expectation) bool {
-		return fun.Reduce(list, true, func(v Expectation, acc bool) bool {
-			if !acc {
-				return acc
-			}
+	pass := true
+	for v := range expects {
 
-			ok := v.Satisfied(tr.getWaitExpired())
-			return ok
-		})
+		if !pass {
+			continue
+		}
+
+		pass = v.Satisfied(tr.getWaitExpired())
 	}
 
-	return len(tr.failures), reducer(expects)
+	return len(tr.failures), pass
 }
 
 func (tr *TestReceiver) finish() (done bool, failed bool) {
