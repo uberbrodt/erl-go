@@ -12,6 +12,15 @@ import (
 	"github.com/uberbrodt/erl-go/erl/exitreason"
 )
 
+// TODO: add test for a normal (not trapping exits) process using StartLink:
+//	should return the error and also receive an ExitSignal
+
+// TODO: add test for a normal (not trapping exits) process using Start:
+// Should return an error, returned pid should be dead or dead within a short time
+
+// TODO: add test for a normal (not trapping exits) process using StartMonitor:
+// Should return an error, self should get a DownMsg
+
 func TestStartLink_InitNoErrors(t *testing.T) {
 	args := TestGSArgs{initProbe: func(self erl.PID, args any) (state TestGS, cont any, err error) {
 		return TestGS{}, nil, nil
@@ -31,6 +40,7 @@ func TestStartLink_InitExitExceptionStop(t *testing.T) {
 
 	trPID := erl.Spawn(tr)
 
+	// because this is true, we won't get an exit signal
 	erl.ProcessFlag(trPID, erl.TrapExit, true)
 
 	myErr := errors.New("Great, an error")
@@ -45,30 +55,11 @@ func TestStartLink_InitExitExceptionStop(t *testing.T) {
 	assert.Assert(t, errors.As(err, &expectedErr))
 	assert.ErrorContains(t, expectedErr, "Great, an error")
 	assert.Assert(t, exitreason.IsException(err))
-
-	var success bool
-
-	for msg := range tr.c {
-		switch msgT := msg.(type) {
-		case erl.ExitMsg:
-			success = true
-
-			assert.Assert(t, exitreason.IsException(msgT.Reason))
-			assert.Assert(t, !erl.IsAlive(gensrvPID))
-
-		default:
-			t.Logf("test receiver got type[%T]: %+v", msg, msg)
-		}
-		if success {
-			break
-		}
-	}
-
-	assert.Assert(t, success)
+	assert.Assert(t, !erl.IsAlive(gensrvPID))
 }
 
 func TestStartLink_InitIgnoreStop(t *testing.T) {
-	// TODO: fix flakey test (or find the bug?)
+	// TODO: maybe add assertion that we *don't* get an ExitMsg?
 	tr := &TestReceiver{
 		c: make(chan any, 500),
 		t: t,
@@ -85,26 +76,7 @@ func TestStartLink_InitIgnoreStop(t *testing.T) {
 	gensrvPID, err := StartLink[TestGS](trPID, TestGS{}, args)
 
 	assert.ErrorIs(t, err, exitreason.Ignore)
-	// TODO: since the process exits with exitreason.Normal, we won't get it's exit signal
-	// so this is the best test we can do without instrumenting the GenServerS
-
-	var success bool
-
-	for msg := range tr.c {
-		switch msgT := msg.(type) {
-		case erl.ExitMsg:
-			success = true
-			assert.ErrorIs(t, msgT.Reason, exitreason.Normal)
-			assert.Assert(t, !erl.IsAlive(gensrvPID))
-		default:
-			t.Logf("test receiver got type[%T]: %+v", msg, msg)
-		}
-		if success {
-			break
-		}
-	}
-
-	assert.Assert(t, success)
+	assert.Assert(t, !erl.IsAlive(gensrvPID))
 }
 
 func TestStop_Defaults(t *testing.T) {

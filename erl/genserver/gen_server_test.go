@@ -212,8 +212,7 @@ func TestGenServer_Init_RegisterNameAlreadyRegistered(t *testing.T) {
 }
 
 func TestGenServer_Init_ReturnsStop(t *testing.T) {
-	// TODO: this test is flakey now?
-	trPID, tr := erl.NewTestReceiver(t)
+	trPID, _ := erl.NewTestReceiver(t)
 	args := TestGSArgs{
 		count: 2,
 		initProbe: func(self erl.PID, args any) (state TestGS, cont any, err error) {
@@ -225,27 +224,13 @@ func TestGenServer_Init_ReturnsStop(t *testing.T) {
 	genSrvPID, err := StartLink[TestGS](trPID, TestGS{}, args, SetName(name))
 	assert.Assert(t, exitreason.IsException(err))
 	assert.ErrorContains(t, err, "random init error")
-
-	success := tr.Loop(func(msg any) bool {
-		xit, ok := msg.(erl.ExitMsg)
-
-		if !ok {
-			return false
-		}
-
-		if xit.Proc.Equals(genSrvPID) {
-			return true
-		}
-		return false
-	})
-
-	assert.Assert(t, success)
-
 	assert.Assert(t, !erl.IsAlive(genSrvPID))
+	_, found := erl.WhereIs(name)
+	assert.Assert(t, !found)
 }
 
 func TestGenServer_Init_PanicReturnsExceptionReason(t *testing.T) {
-	trPID, tr := erl.NewTestReceiver(t)
+	trPID, _ := erl.NewTestReceiver(t)
 	args := TestGSArgs{
 		count: 2,
 		initProbe: func(self erl.PID, args any) (state TestGS, cont any, err error) {
@@ -257,27 +242,13 @@ func TestGenServer_Init_PanicReturnsExceptionReason(t *testing.T) {
 	genSrvPID, err := StartLink[TestGS](trPID, TestGS{}, args, SetName(name))
 	assert.Assert(t, exitreason.IsException(err))
 	assert.ErrorContains(t, err, "uh-oh")
-
-	success := tr.Loop(func(msg any) bool {
-		xit, ok := msg.(erl.ExitMsg)
-
-		if !ok {
-			return false
-		}
-
-		if xit.Proc.Equals(genSrvPID) {
-			return true
-		}
-		return false
-	})
-
-	assert.Assert(t, success)
-
 	assert.Assert(t, !erl.IsAlive(genSrvPID))
+	_, found := erl.WhereIs(name)
+	assert.Assert(t, !found)
 }
 
 func TestGenServer_Init_PanicsAreAlwaysExceptions(t *testing.T) {
-	trPID, tr := erl.NewTestReceiver(t)
+	trPID, _ := erl.NewTestReceiver(t)
 	args := TestGSArgs{
 		count: 2,
 		initProbe: func(self erl.PID, args any) (state TestGS, cont any, err error) {
@@ -289,27 +260,13 @@ func TestGenServer_Init_PanicsAreAlwaysExceptions(t *testing.T) {
 	genSrvPID, err := StartLink[TestGS](trPID, TestGS{}, args, SetName(name))
 	assert.Assert(t, exitreason.IsException(err))
 	assert.ErrorContains(t, err, "uh-oh")
-
-	success := tr.Loop(func(msg any) bool {
-		xit, ok := msg.(erl.ExitMsg)
-
-		if !ok {
-			return false
-		}
-
-		if xit.Proc.Equals(genSrvPID) {
-			return true
-		}
-		return false
-	})
-
-	assert.Assert(t, success)
-
 	assert.Assert(t, !erl.IsAlive(genSrvPID))
+	_, found := erl.WhereIs(name)
+	assert.Assert(t, !found)
 }
 
 func TestGenServer_Init_ReturnsIgnore(t *testing.T) {
-	trPID, tr := erl.NewTestReceiver(t)
+	trPID, _ := erl.NewTestReceiver(t)
 	args := TestGSArgs{
 		count: 2,
 		initProbe: func(self erl.PID, args any) (state TestGS, cont any, err error) {
@@ -320,22 +277,9 @@ func TestGenServer_Init_ReturnsIgnore(t *testing.T) {
 
 	genSrvPID, err := StartLink[TestGS](trPID, TestGS{}, args, SetName(name))
 	assert.ErrorIs(t, err, exitreason.Ignore)
-
-	success := tr.Loop(func(msg any) bool {
-		xit, ok := msg.(erl.ExitMsg)
-
-		if !ok {
-			return false
-		}
-
-		if xit.Proc.Equals(genSrvPID) {
-			return true
-		}
-		return false
-	})
-
-	assert.Assert(t, success)
 	assert.Assert(t, !erl.IsAlive(genSrvPID))
+	_, found := erl.WhereIs(name)
+	assert.Assert(t, !found)
 }
 
 func TestGenServer_Init_Continues(t *testing.T) {

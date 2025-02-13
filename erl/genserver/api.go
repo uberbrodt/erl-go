@@ -209,6 +209,8 @@ func doStart[STATE any](self erl.PID, start startType, callbackStruct GenServer[
 	gensrvPIDChan := make(chan erl.PID)
 	exitSignalsReceived := make(chan struct{})
 
+	// our caller is a supervisor like process, so provide synchronous error messages
+	// by using an interlocutor process to consume process exits
 	if erl.TrappingExits(self) {
 		starterPID := erl.Spawn(&genStarter[STATE]{
 			gensrv: gs,
@@ -224,6 +226,7 @@ func doStart[STATE any](self erl.PID, start startType, callbackStruct GenServer[
 		case ack := <-initAckChan:
 			erl.DebugPrintf("GenServer[%v] received initAck: %+v", pid, ack)
 			if ack.ignore {
+				<-exitSignalsReceived
 				return startRet{pid: pid, err: exitreason.Ignore, monref: monref}
 			}
 			if ack.err != nil {
