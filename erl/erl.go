@@ -158,6 +158,15 @@ func ProcessFlag(self PID, flag ProcFlag, value any) {
 	}
 }
 
+// Returns true if [self] has the [TrapExit] flag set.
+func TrappingExits(self PID) bool {
+	if self.IsNil() {
+		return false
+	}
+
+	return self.p.trapExits()
+}
+
 func Exit(self PID, pid PID, reason *exitreason.S) {
 	es := exitSignal{sender: self, receiver: pid, reason: reason}
 

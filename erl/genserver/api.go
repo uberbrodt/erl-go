@@ -206,43 +206,90 @@ func doStart[STATE any](self erl.PID, start startType, callbackStruct GenServer[
 	}
 	var pid erl.PID
 	var monref erl.Ref
-	switch start {
-	case noLink:
-		pid = erl.Spawn(gs)
+	gensrvPIDChan := make(chan erl.PID)
+	exitSignalsReceived := make(chan struct{})
 
-	case monitor:
-		pid, monref = erl.SpawnMonitor(self, gs)
+	if erl.TrappingExits(self) {
+		starterPID := erl.Spawn(&genStarter[STATE]{
+			gensrv: gs,
+			parent: self,
+			sig:    exitSignalsReceived,
+			gsPID:  gensrvPIDChan,
+			tout:   finalOpts.GetStartTimeout(),
+		})
 
-	case link:
-		pid = erl.SpawnLink(self, gs)
-	}
+		pid = <-gensrvPIDChan
 
-	// pid := spawnFun(self)
-
-	select {
-	case ack := <-initAckChan:
-		erl.DebugPrintf("GenServer[%v] received initAck: %+v", pid, ack)
-		if ack.ignore {
-			return startRet{pid: pid, err: exitreason.Ignore, monref: monref}
-		}
-		// XXX: hack to wait for ExitMsgs to be delivered. I think the right way to do
-		// this would be to create a separate process that starts the genserver
-		// consumes exitmsgs if there's an error, and returns it.
-		// the caveat is that the starter needs to swap the GenServer parent pid with the
-		// [self] pid from this function so Supervisors work right.
-		if ack.err != nil {
-			for {
-				if !erl.IsAlive(pid) {
-					return startRet{pid: pid, err: ack.err, monref: monref}
-				}
+		select {
+		case ack := <-initAckChan:
+			erl.DebugPrintf("GenServer[%v] received initAck: %+v", pid, ack)
+			if ack.ignore {
+				return startRet{pid: pid, err: exitreason.Ignore, monref: monref}
 			}
-		}
-		return startRet{pid: pid, err: ack.err, monref: monref}
+			if ack.err != nil {
+				// this channel is closed when the exit signals for the failed child are delivered.
+				// this will mean certain resources like process names are released, so a supervisor
+				// for instance could proceed to retry restarting.
+				//
+				// in the interest of not blocking a process for any reason, it's possible that the genStarter
+				// times out waiting for exit signals. It will close this channel as well, so there's still the
+				// possibility that a name or something else is not released. This should only be happening if there's
+				// a badly behaved process that isn't reading from the msg inbox and/or monitoring it for closure.
+				<-exitSignalsReceived
+				return startRet{pid: pid, err: ack.err, monref: monref}
+			}
+			// init returned and it wasn't an error, NOW we link/monitor the caller to the new process
+			switch start {
+			case link:
+				erl.Link(self, pid)
 
-	case <-time.After(finalOpts.GetStartTimeout()):
-		// TODO: need to wait until exit messages are delivered to know if the process
-		// name was released
-		erl.Exit(self, pid, exitreason.Kill)
-		return startRet{pid: pid, err: exitreason.Timeout, monref: monref}
+			case monitor:
+				monref = erl.Monitor(self, pid)
+
+			default:
+				// nothing to do
+			}
+
+			// we successfully started, so close the genStarter
+			erl.Send(starterPID, genStarterShutdown{})
+
+			return startRet{pid: pid, err: ack.err, monref: monref}
+
+		case <-time.After(finalOpts.GetStartTimeout()):
+			// TODO: need to wait until exit messages are delivered to know if the process
+			// name was released
+			erl.Exit(self, pid, exitreason.Kill)
+			return startRet{pid: pid, err: exitreason.Timeout, monref: monref}
+		}
+
+	} else {
+		// process isn't trapping exits, so only will receive return value in the case of a spawn or monitor
+		switch start {
+		case link:
+			pid = erl.SpawnLink(self, gs)
+
+		case monitor:
+			pid, monref = erl.SpawnMonitor(self, gs)
+
+		default:
+			pid = erl.Spawn(gs)
+
+		}
+
+		select {
+		case ack := <-initAckChan:
+
+			erl.DebugPrintf("GenServer[%v] received initAck: %+v", pid, ack)
+			if ack.ignore {
+				return startRet{pid: pid, err: exitreason.Ignore, monref: monref}
+			}
+			return startRet{pid: pid, err: ack.err, monref: monref}
+		case <-time.After(finalOpts.GetStartTimeout()):
+			erl.Exit(self, pid, exitreason.Kill)
+			return startRet{pid: pid, err: exitreason.Timeout, monref: monref}
+		}
+
 	}
+
+	// genStarter will start the process for us and listen for any exit signals
 }
