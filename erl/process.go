@@ -22,6 +22,11 @@ type pMonitor struct {
 	ref Ref
 }
 
+type spawnMonitor struct {
+	pid PID
+	ref Ref
+}
+
 type Process struct {
 	id              int64
 	runnable        Runnable
@@ -40,6 +45,10 @@ type Process struct {
 	trapMutex       sync.RWMutex
 	// the local name of the pid, optional
 	_name Name
+	// if set, process sets itself as monitored by PID before anything else
+	spawnMonitor *spawnMonitor
+	// if set, process sets a link with PID before anything else
+	spawnLink *PID
 }
 
 func (p *Process) String() string {
@@ -51,6 +60,22 @@ func (p *Process) String() string {
 }
 
 func (p *Process) run() {
+	// if set, this was created via [SpawnMonitor], and we MUST set the monitor before we start processing the inbox
+	// so that if the Runnable exits immediately, the [DownMsg] will be sent
+	if p.spawnMonitor != nil {
+		DebugPrintf("[%+v] setting spawn monitor for %+v", p.self(), p.spawnMonitor.pid)
+		monitorSig := monitorSignal{ref: p.spawnMonitor.ref, monitor: p.spawnMonitor.pid, monitored: p.self()}
+		sendSignal(p.spawnMonitor.pid, monitorSig)
+		p.monitors = append(p.monitors, pMonitor{pid: p.spawnMonitor.pid, ref: p.spawnMonitor.ref})
+	}
+
+	if p.spawnLink != nil {
+		DebugPrintf("[%+v] setting spawn link for %+v", p.self(), *p.spawnLink)
+		sendSignal(*p.spawnLink, linkSignal{pid: p.self()})
+		p.links = append(p.links, *p.spawnLink)
+
+	}
+
 	// start a go routine that will handle the [Runnable] and feed it [messageSignal]s
 	go func() {
 		var result error

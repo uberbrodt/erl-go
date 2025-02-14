@@ -5,9 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"gotest.tools/v3/assert"
-
 	"github.com/uberbrodt/erl-go/chronos"
+	"github.com/uberbrodt/erl-go/erl/erltest/check"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
 )
 
@@ -31,7 +30,7 @@ func (tr *TestRunnable) Receive(self PID, inbox <-chan any) error {
 			}
 			switch msg := m.(type) {
 			case testRunnableSyncArg:
-				assert.Equal(tr.t, msg.actual, tr.expected)
+				check.Equal(tr.t, msg.actual, tr.expected)
 				msg.wg.Done()
 				return exitreason.Normal
 

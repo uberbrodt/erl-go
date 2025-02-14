@@ -55,8 +55,7 @@ func Unlink(self PID, pid PID) {
 
 // Like [Spawn] but also creates a [Link] between the two processes.
 func SpawnLink(self PID, r Runnable) PID {
-	pid := Spawn(r)
-	Link(self, pid)
+	pid := doSpawn(r, nil, &self)
 	return pid
 }
 
@@ -80,18 +79,26 @@ func Demonitor(self PID, ref Ref) bool {
 
 // Like [Spawn] but also creates a [Monitor]
 func SpawnMonitor(self PID, r Runnable) (PID, Ref) {
-	pid := Spawn(r)
-	ref := Monitor(self, pid)
+	ref := MakeRef()
+	pid := doSpawn(r, &spawnMonitor{pid: self, ref: ref}, nil)
+
+	// ref := Monitor(self, pid)
 	return pid, ref
+}
+
+func doSpawn(r Runnable, sm *spawnMonitor, link *PID) PID {
+	p := NewProcess(r)
+	p.spawnMonitor = sm
+	p.spawnLink = link
+
+	go p.run()
+	return PID{p: p}
 }
 
 // Creates a process and returns a [PID] that can be used to monitor
 // or link to other process.
 func Spawn(r Runnable) PID {
-	p := NewProcess(r)
-
-	go p.run()
-	return PID{p: p}
+	return doSpawn(r, nil, nil)
 }
 
 func NewMsg(body any) Signal {
