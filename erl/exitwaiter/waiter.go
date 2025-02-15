@@ -62,9 +62,13 @@ func initSrv(self erl.PID, args any) (westate, any, error) {
 
 func handleDownMsg(self erl.PID, msg erl.DownMsg, state westate) (westate, any, error) {
 	if msg.Proc.Equals(state.conf.waitinOn) && msg.Ref == state.ref {
-		slog.Info("waitExit caught DownMsg, closing signal channel", "msg", msg)
+		slog.Info("exitwaiter caught DownMsg, closing signal channel", "msg", msg)
 		state.conf.wg.Done()
 		return state, nil, exitreason.Normal
+	} else {
+		slog.Warn("exitwaiter caught DownMsg, but ref or proc did not match",
+			"expected_ref", state.ref, "expected_proc", state.conf.waitinOn,
+			"received_down_msg", msg)
 	}
 	return state, nil, nil
 }

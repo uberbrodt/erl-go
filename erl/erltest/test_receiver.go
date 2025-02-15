@@ -11,6 +11,7 @@ import (
 	"maps"
 	"os"
 	"reflect"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -178,15 +179,16 @@ type TestReceiver struct {
 	castExpects map[reflect.Type][]Expectation
 	callExpects map[reflect.Type][]callExpectation
 	allExpects  map[string]Expectation
-	failures    []*ExpectationFailure
+	_failures   []*ExpectationFailure
 	testdeps    []TestDependency
 	deps        []erl.PID
 	msgCnt      int
 	self        erl.PID
 	// if set to true, t.FailNow will not be called in [Pass] or [Wait]
-	noFail bool
-	mx     sync.RWMutex
-	selfmx sync.RWMutex
+	noFail     bool
+	mx         sync.RWMutex
+	selfmx     sync.RWMutex
+	failuresMx sync.RWMutex
 	// TODO: rename to waitExpired
 	waitExpired bool
 	opts        receiverOptions
@@ -300,7 +302,7 @@ func (tr *TestReceiver) check(msg any) {
 					// pass in the unwrapped message
 					fail := tr.checkMatch(match, v.Msg, nil, ex)
 					if fail != nil {
-						tr.failures = append(tr.failures, fail)
+						tr.appendFailure(fail)
 					}
 				}
 			}
@@ -326,7 +328,7 @@ func (tr *TestReceiver) check(msg any) {
 						genserver.Reply(v.From, ex.reply)
 					}
 					if fail != nil {
-						tr.failures = append(tr.failures, fail)
+						tr.appendFailure(fail)
 					}
 				}
 			}
@@ -347,7 +349,7 @@ func (tr *TestReceiver) check(msg any) {
 					}
 					fail := tr.checkMatch(match, msg, nil, ex)
 					if fail != nil {
-						tr.failures = append(tr.failures, fail)
+						tr.appendFailure(fail)
 					}
 				}
 			}
@@ -467,7 +469,7 @@ func (tr *TestReceiver) Pass() (int, bool) {
 		pass = v.Satisfied(tr.getWaitExpired())
 	}
 
-	return len(tr.failures), pass
+	return len(tr.Failures()), pass
 }
 
 func (tr *TestReceiver) finish() (done bool, failed bool) {
@@ -476,7 +478,7 @@ func (tr *TestReceiver) finish() (done bool, failed bool) {
 		tr.mx.Lock()
 		defer tr.mx.Unlock()
 		tr.safeTLogf("expectation failures", "count", fails)
-		for i, f := range tr.failures {
+		for i, f := range tr.Failures() {
 			tr.safeTLogf("expectation failure", "failure_cnt",
 				i, "name", f.Exp.Name(),
 				"reason", f.Reason,
@@ -538,7 +540,7 @@ func (tr *TestReceiver) Wait() {
 			tr.finish()
 			return
 		}
-		time.Sleep(time.Millisecond)
+		runtime.Gosched()
 	}
 }
 
@@ -585,7 +587,19 @@ func (tr *TestReceiver) Stop() {
 }
 
 func (tr *TestReceiver) Failures() []*ExpectationFailure {
-	return tr.failures
+	tr.failuresMx.RLock()
+	defer tr.failuresMx.RUnlock()
+
+	out := make([]*ExpectationFailure, len(tr._failures))
+
+	copy(out, tr._failures)
+	return out
+}
+
+func (tr *TestReceiver) appendFailure(f *ExpectationFailure) {
+	tr.failuresMx.Lock()
+	defer tr.failuresMx.Unlock()
+	tr._failures = append(tr._failures, f)
 }
 
 // return the [*testing.T]. Don't use this in situations that could run after a

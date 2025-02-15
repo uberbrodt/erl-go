@@ -141,44 +141,14 @@ func (p *Process) run() {
 			switch sig := signal.(type) {
 
 			case monitorSignal:
-				if p.getStatus() != running {
-					sig.monitor.p.send(downSignal{proc: p.self(), ref: sig.ref, reason: exitreason.NoProc})
-					continue
-				}
-				// this is a monitor we took of another process
-				if sig.monitor.Equals(p.self()) {
-					p.monitoring[sig.ref] = sig.monitored
-				} else {
-					// this is a monitor another process took of us
-					p.monitors = append(p.monitors, pMonitor{pid: sig.monitor, ref: sig.ref})
-				}
+				p.handleMonitorSignal(sig)
 			case demonitorSignal:
-				if sig.origin.Equals(p.self()) {
-					monitoredPid := p.monitoring[sig.ref]
-					sendSignal(monitoredPid, sig)
-					delete(p.monitoring, sig.ref)
-				} else {
-					p.monitors = fun.Filter(p.monitors, func(v pMonitor) bool {
-						return v.ref != sig.ref && v.pid != sig.origin
-					})
-				}
+				p.handleDemonitorSignal(sig)
 
 			case linkSignal:
-				if p.getStatus() != running {
-					sig.pid.p.send(exitSignal{sender: p.self(), receiver: sig.pid, reason: exitreason.NoProc, link: true})
-					continue
-				}
-				if !slices.Contains(p.links, sig.pid) {
-					p.links = append(p.links, sig.pid)
-				}
+				p.handleLinkSignal(sig)
 			case unlinkSignal:
-				idx := slices.Index(p.links, sig.pid)
-				if idx != -1 {
-					p.links = slices.Delete(p.links, idx, idx+1)
-				} else {
-					Logger.Printf("%v received an unlink signal for %+v, but one could not be found\r", p.self(), sig.pid)
-				}
-
+				p.handleUnlinkSignal(sig)
 			// all message signals go to the runnable
 			case messageSignal:
 				if p.getStatus() == running {
@@ -228,6 +198,53 @@ func (p *Process) run() {
 	}
 }
 
+func (p *Process) handleMonitorSignal(sig monitorSignal) {
+	if p.getStatus() != running {
+		sig.monitor.p.send(downSignal{proc: p.self(), ref: sig.ref, reason: exitreason.NoProc})
+		return
+		// continue
+	}
+	// this is a monitor we took of another process
+	if sig.monitor.Equals(p.self()) {
+		p.monitoring[sig.ref] = sig.monitored
+	} else {
+		// this is a monitor another process took of us
+		p.monitors = append(p.monitors, pMonitor{pid: sig.monitor, ref: sig.ref})
+	}
+}
+
+func (p *Process) handleDemonitorSignal(sig demonitorSignal) {
+	if sig.origin.Equals(p.self()) {
+		monitoredPid := p.monitoring[sig.ref]
+		sendSignal(monitoredPid, sig)
+		delete(p.monitoring, sig.ref)
+	} else {
+		p.monitors = fun.Filter(p.monitors, func(v pMonitor) bool {
+			return v.ref != sig.ref && v.pid != sig.origin
+		})
+	}
+}
+
+func (p *Process) handleLinkSignal(sig linkSignal) {
+	if p.getStatus() != running {
+		sig.pid.p.send(exitSignal{sender: p.self(), receiver: sig.pid, reason: exitreason.NoProc, link: true})
+		// continue
+		return
+	}
+	if !slices.Contains(p.links, sig.pid) {
+		p.links = append(p.links, sig.pid)
+	}
+}
+
+func (p *Process) handleUnlinkSignal(sig unlinkSignal) {
+	idx := slices.Index(p.links, sig.pid)
+	if idx != -1 {
+		p.links = slices.Delete(p.links, idx, idx+1)
+	} else {
+		Logger.Printf("%v received an unlink signal for %+v, but one could not be found\r", p.self(), sig.pid)
+	}
+}
+
 func (p *Process) exit(e error) {
 	// set status to exiting so that our main loop doesn't send signals twice.
 	DebugPrintf("process %v exiting...", p)
@@ -237,6 +254,40 @@ func (p *Process) exit(e error) {
 		Unregister(p.getName())
 
 	}
+
+	// TODO: now that no more messages are getting onto the inbox, read the whole thing
+	// and process any monitor, demonitor, link and unlink signals so that
+	// anything that called Monitor or Link on this process after we got a signal to exit
+	// and before we setStatus to exiting will get the signals they expect.
+	for _, signal := range p.receive.Drain() {
+		fmt.Printf("got a signal after exit: %#v\n", signal)
+
+		switch sig := signal.(type) {
+
+		case monitorSignal:
+			fmt.Printf("handling post-exit monitoringSignal: %#v\n", sig)
+			if sig.monitor.Equals(p.self()) {
+				p.monitoring[sig.ref] = sig.monitored
+			} else {
+				// this is a monitor another process took of us
+				p.monitors = append(p.monitors, pMonitor{pid: sig.monitor, ref: sig.ref})
+			}
+		case demonitorSignal:
+			fmt.Printf("handling post-exit demonitorSignal: %#v\n", sig)
+			p.handleDemonitorSignal(sig)
+		case linkSignal:
+			fmt.Printf("handling post-exit linkSignal: %#v\n", sig)
+			if !slices.Contains(p.links, sig.pid) {
+				p.links = append(p.links, sig.pid)
+			}
+		case unlinkSignal:
+			fmt.Printf("handling post-exit unlinkSignal: %#v \n", sig)
+			p.handleUnlinkSignal(sig)
+		default:
+			// ignore
+		}
+	}
+
 	var exitReason *exitreason.S
 	if e == nil {
 		exitReason = exitreason.Normal

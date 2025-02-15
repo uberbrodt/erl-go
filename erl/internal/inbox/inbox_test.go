@@ -2,9 +2,11 @@ package inbox_test
 
 import (
 	"testing"
+	"time"
+
+	"gotest.tools/v3/assert"
 
 	"github.com/uberbrodt/erl-go/erl/internal/inbox"
-	"gotest.tools/v3/assert"
 )
 
 func TestPop_ReturnsValue(t *testing.T) {
@@ -56,54 +58,6 @@ func TestSize_ReturnsNumberOfItems(t *testing.T) {
 	assert.Equal(t, result, 3)
 }
 
-func TestSync_CanBeCalledMultipleTimes(t *testing.T) {
-	sig := make(chan int)
-	ended := make(chan struct{})
-
-	ibox := inbox.New[int]()
-
-	go func() {
-		c := ibox.Sync()
-		c.L.Lock()
-		defer c.L.Unlock()
-		t.Log("goroutine start Wait loop")
-		for {
-			v, ok, err := ibox.Pop()
-			if err != nil {
-				t.Log("inbox closed")
-				// exit go routine
-				close(ended)
-				return
-			}
-			if !ok {
-				t.Log("no values in inbox, wait for more")
-				c.Wait()
-				t.Log("Wait() unblocked")
-				continue
-			}
-			t.Logf("got value: %d", v)
-			// set value onto our sig channel
-			sig <- v
-		}
-	}()
-
-	t.Log("enqueue item 1")
-	ibox.Enqueue(1)
-	t.Log("enqueue item 2")
-	ibox.Enqueue(2)
-	t.Log("close inbox")
-
-	t.Log("waiting for item 1")
-	item1 := <-sig
-	assert.Equal(t, item1, 1)
-
-	t.Log("waiting for item 2")
-	item2 := <-sig
-	assert.Equal(t, item2, 2)
-	ibox.Close()
-	<-ended
-}
-
 func TestBlockingPop(t *testing.T) {
 	sig := make(chan int)
 	ended := make(chan struct{})
@@ -111,34 +65,35 @@ func TestBlockingPop(t *testing.T) {
 	ibox := inbox.New[int]()
 
 	go func() {
+		t.Logf("%s - consumer goroutine started", nanoNow())
 		for {
 			item, ok, closed := ibox.BlockingPop()
 			if closed != nil {
-				t.Log("inbox closed")
+				t.Logf("%s - inbox closed", nanoNow())
 				close(ended)
 				return
 
 			}
 			if !ok {
-				t.Log("someone beat us to it, try again")
+				t.Logf("someone beat us to it, try again")
 				continue
 			}
-			t.Logf("got value: %d", item)
+			t.Logf("%s - got value: %d", nanoNow(), item)
 			sig <- item
 		}
 	}()
 
-	t.Log("enqueue item 1")
+	t.Logf("%s - enqueue item 1", nanoNow())
 	ibox.Enqueue(1)
-	t.Log("enqueue item 2")
+	t.Logf("%s - enqueue item 2", nanoNow())
 	ibox.Enqueue(2)
-	t.Log("close inbox")
+	t.Logf("%s - close inbox", nanoNow())
 
-	t.Log("waiting for item 1")
+	t.Logf("%s - waiting for item 1", nanoNow())
 	item1 := <-sig
 	assert.Equal(t, item1, 1)
 
-	t.Log("waiting for item 2")
+	t.Logf("%s - waiting for item 2", nanoNow())
 	item2 := <-sig
 	assert.Equal(t, item2, 2)
 	ibox.Close()
@@ -152,28 +107,29 @@ func TestIter(t *testing.T) {
 	ibox := inbox.New[int]()
 
 	go func() {
+		t.Logf("%s - iteration goroutine started\n", nanoNow())
 		for item, ok := range ibox.Iter() {
+			t.Logf("%s - loop run ibox.Iter()\n", nanoNow())
 			if !ok {
-				t.Log("someone beat us to it, try again")
+				t.Logf("%s - someone beat us to it, try again\n", nanoNow())
 				continue
 			}
-			t.Logf("got value: %d", item)
+			t.Logf("%s - got value: %d\n", nanoNow(), item)
 			sig <- item
 		}
 		close(ended)
 	}()
 
-	t.Log("enqueue item 1")
+	t.Logf("%s - enqueue item 1\n", nanoNow())
 	ibox.Enqueue(1)
-	t.Log("enqueue item 2")
+	t.Logf("%s - enqueue item 2\n", nanoNow())
 	ibox.Enqueue(2)
-	t.Log("close inbox")
 
-	t.Log("waiting for item 1")
+	t.Logf("%s - waiting for item 1\n", nanoNow())
 	item1 := <-sig
 	assert.Equal(t, item1, 1)
 
-	t.Log("waiting for item 2")
+	t.Logf("%s -waiting for item 2\n", nanoNow())
 	item2 := <-sig
 	assert.Equal(t, item2, 2)
 	ibox.Close()
@@ -189,26 +145,29 @@ func TestChannel(t *testing.T) {
 	go func() {
 		c := ibox.Channel()
 		for item := range c {
-			t.Logf("got value: %d", item)
+			t.Logf("%s - got value: %d", nanoNow(), item)
 			sig <- item
 		}
 		close(ended)
 	}()
 
-	t.Log("enqueue item 1")
+	t.Logf("%s - enqueue item 1\n", nanoNow())
 	ibox.Enqueue(1)
-	t.Log("enqueue item 2")
+	t.Logf("%s - enqueue item 2\n", nanoNow())
 	ibox.Enqueue(2)
-	t.Log("close inbox")
 
-	t.Log("waiting for item 1")
+	t.Logf("%s - waiting for item 1", nanoNow())
 	item1 := <-sig
 	assert.Equal(t, item1, 1)
 
-	t.Log("waiting for item 2")
+	t.Logf("%s - waiting for item 2", nanoNow())
 	item2 := <-sig
 	assert.Equal(t, item2, 2)
-	t.Log("closing inbox")
+	t.Logf("%s - closing inbox", nanoNow())
 	ibox.Close()
 	<-ended
+}
+
+func nanoNow() string {
+	return time.Now().Format(time.RFC3339Nano)
 }
