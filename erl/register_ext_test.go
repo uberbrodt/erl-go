@@ -27,7 +27,7 @@ func (np NamedProcess) Receive(self erl.PID, inbox <-chan any) error {
 }
 
 func TestRegistration_ReRegisterNameAfterDownMsg(t *testing.T) {
-	name := erl.Name("my_pid")
+	name := erl.Name("49e71d92-bf7d-4ce2-8eca-10bafa7a09e8")
 	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
 
 	var pid erl.PID
@@ -83,16 +83,17 @@ func TestRegistration_InvalidNames(t *testing.T) {
 func TestRegistration_NameInUse(t *testing.T) {
 	var result *erl.RegistrationError
 	var otherPID erl.PID
+	name := erl.Name("7782cdab-b213-4a4d-822c-02b2c235b629")
 
 	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
 
 	tc.Arrange(func(self erl.PID) {
 		otherPID, _ = erltest.NewReceiver(t)
-		result = erl.Register(erl.Name("my_pid"), tc.TestPID())
+		result = erl.Register(name, tc.TestPID())
 	})
 
 	tc.Act(func() {
-		result = erl.Register(erl.Name("my_pid"), otherPID)
+		result = erl.Register(name, otherPID)
 	})
 
 	tc.Assert(func() {
@@ -102,8 +103,8 @@ func TestRegistration_NameInUse(t *testing.T) {
 
 func TestRegistration_AlreadyRegistered(t *testing.T) {
 	var result *erl.RegistrationError
-	name := erl.Name("my_pid")
-	otherName := erl.Name("my_pid")
+	name := erl.Name("ae081f4d-4022-42aa-8371-0b211f00c9d4")
+	otherName := erl.Name("d8683df9-1e57-4692-8ad1-22e42a8bead5")
 
 	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
 
@@ -124,6 +125,7 @@ func TestRegistration_AlreadyRegistered(t *testing.T) {
 
 func TestRegistration_BadPidReturnsNoProc(t *testing.T) {
 	var result *erl.RegistrationError
+	name := erl.Name("30d43088-290f-4b5b-a89e-4fc07877e786")
 
 	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
 
@@ -131,7 +133,7 @@ func TestRegistration_BadPidReturnsNoProc(t *testing.T) {
 	})
 
 	tc.Act(func() {
-		result = erl.Register(erl.Name("my_pid"), erl.PID{})
+		result = erl.Register(name, erl.PID{})
 	})
 
 	tc.Assert(func() {
@@ -142,7 +144,7 @@ func TestRegistration_BadPidReturnsNoProc(t *testing.T) {
 func TestWhereIs_NameFound(t *testing.T) {
 	var found bool
 	var foundPID erl.PID
-	name := erl.Name("my_pid")
+	name := erl.Name("08cf9e7e-440e-4bf1-b805-0dbfbfa4c823")
 
 	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
 
@@ -164,8 +166,8 @@ func TestWhereIs_NameFound(t *testing.T) {
 func TestWhereIs_NameNotFound(t *testing.T) {
 	var found bool
 	var foundPID erl.PID
-	name := erl.Name("my_pid")
-	badName := erl.Name("foo")
+	name := erl.Name("3b0da840-bb5d-44c3-b5f9-68375c81c41a")
+	badName := erl.Name("61e3f530-e138-438c-8b91-2b76ecec62cc")
 
 	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
 
@@ -185,7 +187,7 @@ func TestWhereIs_NameNotFound(t *testing.T) {
 }
 
 func TestRegistration_ReRegisterNameAfterExitMsg(t *testing.T) {
-	name := erl.Name("my_pid")
+	name := erl.Name("7c5e8d3e-1bcb-44c3-bc48-e87a4b96196e")
 	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
 
 	var pid erl.PID

@@ -54,7 +54,7 @@ pre-release:
 #@ test: runs all tests.
 #################################################################################
 test: check-tools
-	GORACE="history_size=2" gotestsum -f testname -- -timeout $(TIMEOUT) -race -run=$(TEST_RUN) -coverprofile cover.out $(TEST_ARG)
+	GORACE="history_size=2" gotestsum -f testname -- -timeout $(TIMEOUT) -shuffle on -race -run=$(TEST_RUN) -coverprofile cover.out $(TEST_ARG)
 	./scripts/rm-test-fw-from-coverprofile
 
 
