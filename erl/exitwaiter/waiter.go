@@ -7,7 +7,6 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
-	"testing"
 
 	"github.com/uberbrodt/erl-go/erl"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
@@ -26,9 +25,15 @@ type westate struct {
 	ref  erl.Ref
 }
 
+// a testing.T
+type TestT interface {
+	FailNow()
+	Logf(format string, args ...any)
+}
+
 // Starts a new ExitWaiter. The returned channel will be closed when the exit
 // signal is received from [waitingOn]
-func New(t *testing.T, self erl.PID, waitingOn erl.PID, wg *sync.WaitGroup) (erl.PID, error) {
+func New(t TestT, self erl.PID, waitingOn erl.PID, wg *sync.WaitGroup) (erl.PID, error) {
 	pid, err := Start(self, weConfig{wg: wg, waitinOn: waitingOn})
 	if err != nil {
 		t.Logf("could not start exitWaiter: %v", err)

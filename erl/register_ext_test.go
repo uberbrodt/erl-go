@@ -6,15 +6,15 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/mock/gomock"
 	"gotest.tools/v3/assert"
 
 	"github.com/uberbrodt/erl-go/erl"
-	"github.com/uberbrodt/erl-go/erl/erltest"
-	"github.com/uberbrodt/erl-go/erl/erltest/check"
-	"github.com/uberbrodt/erl-go/erl/erltest/expect"
-	"github.com/uberbrodt/erl-go/erl/erltest/testcase"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
 	"github.com/uberbrodt/erl-go/erl/internal/test"
+	"github.com/uberbrodt/erl-go/erl/x/erltest"
+	"github.com/uberbrodt/erl-go/erl/x/erltest/check"
+	"github.com/uberbrodt/erl-go/erl/x/erltest/testcase"
 )
 
 type NamedProcess struct{}
@@ -40,7 +40,7 @@ func TestRegistration_ReRegisterNameAfterDownMsg(t *testing.T) {
 		assert.Assert(t, err == nil)
 		_ = erl.Monitor(self, pid)
 
-		tc.Receiver().Expect(erl.DownMsg{}, expect.Called(expect.Times(1)))
+		tc.Receiver().Expect(erl.DownMsg{}, gomock.Any())
 	})
 
 	tc.Act(func() {
@@ -200,7 +200,7 @@ func TestRegistration_ReRegisterNameAfterExitMsg(t *testing.T) {
 		assert.Assert(t, err == nil)
 		erl.Link(self, pid)
 
-		tc.Receiver().Expect(erl.ExitMsg{}, expect.Called(expect.Times(1)))
+		tc.Receiver().Expect(erl.ExitMsg{}, gomock.Any()).Times(1)
 	})
 
 	tc.Act(func() {
@@ -233,7 +233,7 @@ func TestRegistration_MassRegistration(t *testing.T) {
 			assert.Assert(t, err == nil)
 			_ = erl.Monitor(self, pid)
 
-			tc.Receiver().Expect(erl.DownMsg{}, expect.Called(expect.AtLeast(1)))
+			tc.Receiver().Expect(erl.DownMsg{}, gomock.Any()).Times(1)
 		})
 
 		tc.Act(func() {

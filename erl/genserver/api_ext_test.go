@@ -4,13 +4,13 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/mock/gomock"
 	"gotest.tools/v3/assert"
 
 	"github.com/uberbrodt/erl-go/erl"
-	"github.com/uberbrodt/erl-go/erl/erltest"
-	"github.com/uberbrodt/erl-go/erl/erltest/expect"
-	"github.com/uberbrodt/erl-go/erl/erltest/testcase"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
+	"github.com/uberbrodt/erl-go/erl/x/erltest"
+	"github.com/uberbrodt/erl-go/erl/x/erltest/testcase"
 )
 
 // if the process we're starting exits init cleanly, we'll get a nil error
@@ -27,7 +27,7 @@ func TestStartLink_WorkerProcess_Success(t *testing.T) {
 			return ParentTestStartLink(self, TestParentConfig{Relay: self})
 		})
 
-		tc.Receiver().Expect(erl.ExitMsg{}, expect.Called(expect.Never()))
+		tc.Receiver().Expect(erl.ExitMsg{}, gomock.Any()).Times(0)
 	})
 
 	tc.Act(func() {
@@ -54,7 +54,7 @@ func TestStartLink_WorkerProcess_Exception(t *testing.T) {
 			return ParentTestStartLink(self, TestParentConfig{Relay: self})
 		})
 
-		tc.Receiver().Expect(erl.ExitMsg{}, expect.Called(expect.Times(1)))
+		tc.Receiver().Expect(erl.ExitMsg{}, gomock.Any()).Times(1)
 	})
 
 	tc.Act(func() {
@@ -81,7 +81,7 @@ func TestStartLink_WorkerProcess_Ignore(t *testing.T) {
 			return ParentTestStartLink(self, TestParentConfig{Relay: self})
 		})
 
-		tc.Receiver().Expect(erl.ExitMsg{}, expect.Called(expect.Never()))
+		tc.Receiver().Expect(erl.ExitMsg{}, gomock.Any()).Times(0)
 	})
 
 	tc.Act(func() {
@@ -108,7 +108,7 @@ func TestStartMonitor_WorkerProcess_Success(t *testing.T) {
 			return ParentTestStartLink(self, TestParentConfig{Relay: self})
 		})
 
-		tc.Receiver().Expect(DownNotification{}, expect.Called(expect.Never()))
+		tc.Receiver().Expect(DownNotification{}, gomock.Any()).Times(0)
 	})
 
 	tc.Act(func() {
@@ -137,7 +137,7 @@ func TestStartMonitor_WorkerProcess_Exception(t *testing.T) {
 			return ParentTestStartLink(self, TestParentConfig{Relay: self})
 		})
 
-		tc.Receiver().Expect(DownNotification{}, expect.Called(expect.Times(1)))
+		tc.Receiver().Expect(DownNotification{}, gomock.Any()).Times(1)
 	})
 
 	tc.Act(func() {
@@ -164,7 +164,7 @@ func TestStartMonitor_WorkerProcess_Ignore(t *testing.T) {
 			return ParentTestStartLink(self, TestParentConfig{Relay: self})
 		})
 
-		tc.Receiver().Expect(DownNotification{}, expect.Called(expect.Times(1)))
+		tc.Receiver().Expect(DownNotification{}, gomock.Any()).Times(1)
 	})
 
 	tc.Act(func() {
@@ -189,7 +189,7 @@ func TestStart_WorkerProcess_Success(t *testing.T) {
 			return ParentTestStartLink(self, TestParentConfig{Relay: self})
 		})
 
-		tc.Receiver().Expect(erl.ExitMsg{}, expect.Called(expect.Never()))
+		tc.Receiver().Expect(erl.ExitMsg{}, gomock.Any()).Times(0)
 	})
 
 	tc.Act(func() {
@@ -215,8 +215,8 @@ func TestStart_WorkerProcess_Exception(t *testing.T) {
 			return ParentTestStartLink(self, TestParentConfig{Relay: self})
 		})
 
-		tc.Receiver().Expect(erl.ExitMsg{}, expect.Called(expect.Never()))
-		tc.Receiver().Expect(DownNotification{}, expect.Called(expect.Never()))
+		tc.Receiver().Expect(erl.ExitMsg{}, gomock.Any()).Times(0)
+		tc.Receiver().Expect(DownNotification{}, gomock.Any()).Times(0)
 	})
 
 	tc.Act(func() {
@@ -241,8 +241,8 @@ func TestStart_WorkerProcess_Ignore(t *testing.T) {
 			return ParentTestStartLink(self, TestParentConfig{Relay: self})
 		})
 
-		tc.Receiver().Expect(erl.ExitMsg{}, expect.Called(expect.Never()))
-		tc.Receiver().Expect(DownNotification{}, expect.Called(expect.Never()))
+		tc.Receiver().Expect(erl.ExitMsg{}, gomock.Any()).Times(0)
+		tc.Receiver().Expect(DownNotification{}, gomock.Any()).Times(0)
 	})
 
 	tc.Act(func() {
