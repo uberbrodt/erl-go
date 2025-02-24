@@ -124,7 +124,7 @@ func SendAfter(pid PID, term any, tout time.Duration) TimerRef {
 
 func sendSignal(pid PID, signal Signal) {
 	// if process isn't alive, pid.p may be nil
-	if pid != UndefinedPID && !pid.IsNil() {
+	if pid != UndefinedPID && !pid.IsNil() && pid.p.getStatus() == running {
 		pid.p.send(signal)
 	} else {
 		// if the process is dead we reply with exit/down msgs as needed. All other messages are ignored
