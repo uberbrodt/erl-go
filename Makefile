@@ -4,7 +4,7 @@
 
 TEST_ARG ?= ./...
 TEST_RUN ?= ""
-TIMEOUT ?= "3m"
+TIMEOUT ?= "2m"
 version_file := VERSION
 VERSION := $(shell cat ${version_file})
 
@@ -54,7 +54,7 @@ pre-release:
 #@ test: runs all tests.
 #################################################################################
 test: check-tools
-	GORACE="history_size=2" gotestsum -f testname -- -timeout $(TIMEOUT) -shuffle on -race -run=$(TEST_RUN) -coverprofile cover.out $(TEST_ARG)
+	 GORACE="history_size=2" gotestsum -f testname --  -failfast -timeout $(TIMEOUT) -shuffle on -race -run=$(TEST_RUN) -coverprofile cover.out $(TEST_ARG)
 	./scripts/rm-test-fw-from-coverprofile
 
 
