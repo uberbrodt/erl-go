@@ -9,15 +9,15 @@ import (
 	"gotest.tools/v3/assert"
 
 	"github.com/uberbrodt/erl-go/erl"
-	"github.com/uberbrodt/erl-go/erl/erltest/testserver"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
 	"github.com/uberbrodt/erl-go/erl/exitwaiter"
+	"github.com/uberbrodt/erl-go/erl/x/erltest/testserver"
 )
 
 func TestWaitsOnProcessesNotTrappingExits(t *testing.T) {
 	t.Logf("[%s] Test Started", time.Now().Format(time.RFC3339Nano))
 	var wg sync.WaitGroup
-	pid, err := testserver.Start(erl.RootPID(), testserver.TestServerConfig{InitFn: testserver.InitOK})
+	pid, err := testserver.Start(erl.RootPID(), testserver.NewConfig())
 
 	assert.NilError(t, err)
 	assert.Assert(t, erl.IsAlive(pid))
@@ -36,7 +36,7 @@ func TestWaitsOnProcessesNotTrappingExits(t *testing.T) {
 func TestWaitsOnProcessesTrappingExits(t *testing.T) {
 	t.Logf("[%s] Test Started", time.Now().Format(time.RFC3339Nano))
 	var wg sync.WaitGroup
-	pid, err := testserver.Start(erl.RootPID(), testserver.TestServerConfig{InitFn: InitTrapExit})
+	pid, err := testserver.Start(erl.RootPID(), testserver.NewConfig().SetInit(InitTrapExit))
 
 	assert.NilError(t, err)
 	assert.Assert(t, erl.IsAlive(pid))
@@ -55,7 +55,7 @@ func TestWaitsOnProcessesTrappingExits(t *testing.T) {
 func TestClosesWaitGroupIfProcessAlreadyDead(t *testing.T) {
 	t.Logf("[%s] Test Started", time.Now().Format(time.RFC3339Nano))
 	var wg sync.WaitGroup
-	pid, err := testserver.Start(erl.RootPID(), testserver.TestServerConfig{InitFn: InitTrapExit})
+	pid, err := testserver.Start(erl.RootPID(), testserver.NewConfig().SetInit(InitTrapExit))
 
 	assert.NilError(t, err)
 	assert.Assert(t, erl.IsAlive(pid))
@@ -77,7 +77,7 @@ func Test_WaitOnMultipleProcesses(t *testing.T) {
 	var wg sync.WaitGroup
 	pids := make([]erl.PID, 0, 10)
 	for range 40 {
-		pid, err := testserver.Start(erl.RootPID(), testserver.TestServerConfig{InitFn: testserver.InitOK})
+		pid, err := testserver.Start(erl.RootPID(), testserver.NewConfig().SetInit(testserver.InitOK))
 
 		assert.NilError(t, err)
 		assert.Assert(t, erl.IsAlive(pid))
@@ -102,7 +102,7 @@ func Test_WaitOnMultipleProcesses(t *testing.T) {
 }
 
 func InitTrapExit(self erl.PID, args any) (testserver.TestServer, any, error) {
-	conf, ok := args.(testserver.TestServerConfig)
+	conf, ok := args.(*testserver.Config)
 
 	if !ok {
 		return testserver.TestServer{}, nil, exitreason.Exception(errors.New("Init arg must be a {}"))

@@ -11,6 +11,7 @@ import (
 	"github.com/uberbrodt/erl-go/erl/exitreason"
 	"github.com/uberbrodt/erl-go/erl/x/erltest"
 	"github.com/uberbrodt/erl-go/erl/x/erltest/testcase"
+	"github.com/uberbrodt/erl-go/erl/x/erltest/testserver"
 )
 
 // if the process we're starting exits init cleanly, we'll get a nil error
@@ -24,14 +25,15 @@ func TestStartLink_WorkerProcess_Success(t *testing.T) {
 
 	tc.Arrange(func(self erl.PID) {
 		parentPID = tc.StartServer(func(self erl.PID) (erl.PID, error) {
-			return ParentTestStartLink(self, TestParentConfig{Relay: self})
+			return testserver.StartLink(self, testserver.NewConfig().
+				AddInfoHandler(erl.DownMsg{}, parentGetsDownMsg(t, self)))
 		})
 
 		tc.Receiver().Expect(erl.ExitMsg{}, gomock.Any()).Times(0)
 	})
 
 	tc.Act(func() {
-		pid, err = ServerTestStartLink(parentPID, TestServerConfig{InitFn: ServerTestInitOK})
+		pid, err = testserver.StartLink(parentPID, testserver.NewConfig().SetInit(testserver.InitOK))
 	})
 
 	tc.Assert(func() {
@@ -51,14 +53,15 @@ func TestStartLink_WorkerProcess_Exception(t *testing.T) {
 
 	tc.Arrange(func(self erl.PID) {
 		parentPID = tc.StartServer(func(self erl.PID) (erl.PID, error) {
-			return ParentTestStartLink(self, TestParentConfig{Relay: self})
+			return testserver.StartLink(self, testserver.NewConfig().
+				AddInfoHandler(erl.DownMsg{}, parentGetsDownMsg(t, self)))
 		})
 
 		tc.Receiver().Expect(erl.ExitMsg{}, gomock.Any()).Times(1)
 	})
 
 	tc.Act(func() {
-		pid, err = ServerTestStartLink(parentPID, TestServerConfig{InitFn: ServerTestInitError})
+		pid, err = testserver.StartLink(parentPID, testserver.NewConfig().SetInit(testserver.InitError))
 	})
 
 	tc.Assert(func() {
@@ -78,14 +81,15 @@ func TestStartLink_WorkerProcess_Ignore(t *testing.T) {
 
 	tc.Arrange(func(self erl.PID) {
 		parentPID = tc.StartServer(func(self erl.PID) (erl.PID, error) {
-			return ParentTestStartLink(self, TestParentConfig{Relay: self})
+			return testserver.StartLink(self, testserver.NewConfig().
+				AddInfoHandler(erl.DownMsg{}, parentGetsDownMsg(t, self)))
 		})
 
 		tc.Receiver().Expect(erl.ExitMsg{}, gomock.Any()).Times(0)
 	})
 
 	tc.Act(func() {
-		pid, err = ServerTestStartLink(parentPID, TestServerConfig{InitFn: ServerTestInitIgnore})
+		pid, err = testserver.StartLink(parentPID, testserver.NewConfig().SetInit(testserver.InitIgnore))
 	})
 
 	tc.Assert(func() {
@@ -105,14 +109,15 @@ func TestStartMonitor_WorkerProcess_Success(t *testing.T) {
 
 	tc.Arrange(func(self erl.PID) {
 		parentPID = tc.StartServer(func(self erl.PID) (erl.PID, error) {
-			return ParentTestStartLink(self, TestParentConfig{Relay: self})
+			return testserver.StartLink(self, testserver.NewConfig().
+				AddInfoHandler(erl.DownMsg{}, parentGetsDownMsg(t, self)))
 		})
 
 		tc.Receiver().Expect(DownNotification{}, gomock.Any()).Times(0)
 	})
 
 	tc.Act(func() {
-		pid, _, err = ServerTestStartMonitor(parentPID, TestServerConfig{InitFn: ServerTestInitOK})
+		pid, _, err = testserver.StartMonitor(parentPID, testserver.NewConfig().SetInit(testserver.InitOK))
 	})
 
 	tc.Assert(func() {
@@ -134,14 +139,15 @@ func TestStartMonitor_WorkerProcess_Exception(t *testing.T) {
 
 	tc.Arrange(func(self erl.PID) {
 		parentPID = tc.StartServer(func(self erl.PID) (erl.PID, error) {
-			return ParentTestStartLink(self, TestParentConfig{Relay: self})
+			return testserver.StartLink(self, testserver.NewConfig().
+				AddInfoHandler(erl.DownMsg{}, parentGetsDownMsg(t, self)))
 		})
 
 		tc.Receiver().Expect(DownNotification{}, gomock.Any()).Times(1)
 	})
 
 	tc.Act(func() {
-		pid, _, err = ServerTestStartMonitor(parentPID, TestServerConfig{InitFn: ServerTestInitError})
+		pid, _, err = testserver.StartMonitor(parentPID, testserver.NewConfig().SetInit(testserver.InitError))
 	})
 
 	tc.Assert(func() {
@@ -161,14 +167,15 @@ func TestStartMonitor_WorkerProcess_Ignore(t *testing.T) {
 
 	tc.Arrange(func(self erl.PID) {
 		parentPID = tc.StartServer(func(self erl.PID) (erl.PID, error) {
-			return ParentTestStartLink(self, TestParentConfig{Relay: self})
+			return testserver.StartLink(self, testserver.NewConfig().
+				AddInfoHandler(erl.DownMsg{}, parentGetsDownMsg(t, self)))
 		})
 
 		tc.Receiver().Expect(DownNotification{}, gomock.Any()).Times(1)
 	})
 
 	tc.Act(func() {
-		pid, _, err = ServerTestStartMonitor(parentPID, TestServerConfig{InitFn: ServerTestInitIgnore})
+		pid, _, err = testserver.StartMonitor(parentPID, testserver.NewConfig().SetInit(testserver.InitIgnore))
 	})
 
 	tc.Assert(func() {
@@ -186,14 +193,15 @@ func TestStart_WorkerProcess_Success(t *testing.T) {
 
 	tc.Arrange(func(self erl.PID) {
 		parentPID = tc.StartServer(func(self erl.PID) (erl.PID, error) {
-			return ParentTestStartLink(self, TestParentConfig{Relay: self})
+			return testserver.StartLink(self, testserver.NewConfig().
+				AddInfoHandler(erl.DownMsg{}, parentGetsDownMsg(t, self)))
 		})
 
 		tc.Receiver().Expect(erl.ExitMsg{}, gomock.Any()).Times(0)
 	})
 
 	tc.Act(func() {
-		pid, err = ServerTestStart(parentPID, TestServerConfig{InitFn: ServerTestInitOK})
+		pid, err = testserver.Start(parentPID, testserver.NewConfig().SetInit(testserver.InitOK))
 	})
 
 	tc.Assert(func() {
@@ -212,7 +220,8 @@ func TestStart_WorkerProcess_Exception(t *testing.T) {
 
 	tc.Arrange(func(self erl.PID) {
 		parentPID = tc.StartServer(func(self erl.PID) (erl.PID, error) {
-			return ParentTestStartLink(self, TestParentConfig{Relay: self})
+			return testserver.StartLink(self, testserver.NewConfig().
+				AddInfoHandler(erl.DownMsg{}, parentGetsDownMsg(t, self)))
 		})
 
 		tc.Receiver().Expect(erl.ExitMsg{}, gomock.Any()).Times(0)
@@ -220,7 +229,7 @@ func TestStart_WorkerProcess_Exception(t *testing.T) {
 	})
 
 	tc.Act(func() {
-		pid, err = ServerTestStart(parentPID, TestServerConfig{InitFn: ServerTestInitError})
+		pid, err = testserver.Start(parentPID, testserver.NewConfig().SetInit(testserver.InitError))
 	})
 
 	tc.Assert(func() {
@@ -238,7 +247,8 @@ func TestStart_WorkerProcess_Ignore(t *testing.T) {
 
 	tc.Arrange(func(self erl.PID) {
 		parentPID = tc.StartServer(func(self erl.PID) (erl.PID, error) {
-			return ParentTestStartLink(self, TestParentConfig{Relay: self})
+			return testserver.StartLink(self, testserver.NewConfig().
+				AddInfoHandler(erl.DownMsg{}, parentGetsDownMsg(t, self)))
 		})
 
 		tc.Receiver().Expect(erl.ExitMsg{}, gomock.Any()).Times(0)
@@ -246,7 +256,7 @@ func TestStart_WorkerProcess_Ignore(t *testing.T) {
 	})
 
 	tc.Act(func() {
-		pid, err = ServerTestStart(parentPID, TestServerConfig{InitFn: ServerTestInitIgnore})
+		pid, err = testserver.Start(parentPID, testserver.NewConfig().SetInit(testserver.InitIgnore))
 	})
 
 	tc.Assert(func() {

@@ -15,6 +15,7 @@ import (
 	"github.com/uberbrodt/erl-go/erl/x/erltest"
 	"github.com/uberbrodt/erl-go/erl/x/erltest/check"
 	"github.com/uberbrodt/erl-go/erl/x/erltest/testcase"
+	"github.com/uberbrodt/erl-go/erl/x/erltest/testserver"
 )
 
 type NamedProcess struct{}
@@ -217,34 +218,35 @@ func TestRegistration_ReRegisterNameAfterExitMsg(t *testing.T) {
 	})
 }
 
+// This is testing a tight loop of name re-registration. We want to make sure that
+// we can re-register a name after an exit signal for the named process is received.
 func TestRegistration_MassRegistration(t *testing.T) {
 	test.SlowTest(t)
-	for i := 0; i < 20; i++ {
-		tc := testcase.New(t, erltest.WaitTimeout(30*time.Second))
-		name := erl.Name(fmt.Sprintf("my_pid-%d", i))
+	names := make([]erl.Name, 0, 200)
+	for i := range 200 {
+		names = append(names, erl.Name(fmt.Sprintf("my_pid-%d", i)))
+	}
 
-		var pid erl.PID
+	for _, name := range names {
 
-		tc.Arrange(func(self erl.PID) {
-			// pid = tc.Spawn(erltest.NewReceiver(t))
-			pid = erl.Spawn(NamedProcess{})
-			err := erl.Register(name, pid)
+		self, tr := erltest.NewReceiver(t, erltest.WaitTimeout(0))
 
-			assert.Assert(t, err == nil)
-			_ = erl.Monitor(self, pid)
+		tr.Expect(erl.DownMsg{}, gomock.Any()).Times(1)
+		pid, _, err := testserver.StartMonitor(self, testserver.NewConfig())
+		assert.Assert(t, err == nil)
+		err = erl.Register(name, pid)
+		t.Logf("registration error: %+v", err)
 
-			tc.Receiver().Expect(erl.DownMsg{}, gomock.Any()).Times(1)
-		})
+		var nilErr *erl.RegistrationError
+		assert.Equal(t, err, nilErr)
 
-		tc.Act(func() {
-			erl.Exit(tc.TestPID(), pid, exitreason.Normal)
-		})
+		t.Log("sending exit...")
+		erl.Exit(self, pid, exitreason.Normal)
+		tr.Wait()
 
-		tc.Assert(func() {
-			pid2 := erl.Spawn(NamedProcess{})
-			err := erl.Register(name, pid2)
-			t.Logf("registration error: %+v", err)
-			assert.Assert(t, err == nil)
-		})
+		pid2 := erl.Spawn(NamedProcess{})
+		err = erl.Register(name, pid2)
+		t.Logf("registration error: %+v", err)
+		assert.Equal(t, err, nilErr)
 	}
 }

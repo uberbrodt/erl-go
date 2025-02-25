@@ -1,3 +1,5 @@
+// Deprecated: use [erl-go/erl/x/erltest instead, which has better msg matchers and logging]
+//
 // this package contains the [TestReceiver] which is a process that
 // can have message expectations set on them. These expectations match
 // messages sent to the process inbox and execute a [TestExpectation] function. The

@@ -1,6 +1,8 @@
 module github.com/uberbrodt/erl-go
 
-go 1.23
+go 1.23.0
+
+toolchain go1.23.6
 
 require (
 	github.com/google/go-cmp v0.6.0
@@ -10,4 +12,7 @@ require (
 	gotest.tools/v3 v3.5.1
 )
 
-require github.com/budougumi0617/cmpmock v0.1.1 // indirect
+require (
+	github.com/budougumi0617/cmpmock v0.1.1 // indirect
+	golang.org/x/exp v0.0.0-20250218142911-aa4b98e5adaa // indirect
+)

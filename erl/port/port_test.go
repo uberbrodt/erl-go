@@ -26,7 +26,6 @@ import (
 )
 
 func TestOpen_WritesToStdOutBuffer(t *testing.T) {
-	t.Skip("TODO: re-enable once done with test failure investigation")
 	self, tr := erl.NewTestReceiver(t)
 	// f, err := os.OpenFile("testdata/stdout", os.O_RDWR|os.O_CREATE, 0644)
 
@@ -58,7 +57,6 @@ func TestOpen_WritesToStdOutBuffer(t *testing.T) {
 }
 
 func TestSendsMessageToPortOwner(t *testing.T) {
-	t.Skip("TODO: re-enable once done with test failure investigation")
 	self, tr := erl.NewTestReceiver(t)
 
 	exe := projectpath.Join("erl/port/testdata/ext_line_cmd.sh")
@@ -89,7 +87,6 @@ func TestSendsMessageToPortOwner(t *testing.T) {
 }
 
 func TestSendsMessageToPortOwner_NULDecoder(t *testing.T) {
-	t.Skip("TODO: re-enable once done with test failure investigation")
 	self, tr := erl.NewTestReceiver(t)
 
 	exe := projectpath.Join("erl/port/testdata/ext_stream_cmd.sh")
@@ -131,7 +128,6 @@ func TestSendsMessageToPortOwner_NULDecoder(t *testing.T) {
 }
 
 func TestSendsMessageToPortOwner_ByteLenDecoder(t *testing.T) {
-	t.Skip("TODO: re-enable once done with test failure investigation")
 	self, tr := erl.NewTestReceiver(t)
 
 	exe := projectpath.Join("erl/port/testdata/bo_cmd.sh")
@@ -185,7 +181,6 @@ func TestSendsMessageToPortOwner_ByteLenDecoder(t *testing.T) {
 }
 
 func TestOpts_ReturnExitStatus_WhenZero(t *testing.T) {
-	t.Skip("TODO: re-enable once done with test failure investigation")
 	self, tr := erl.NewTestReceiver(t)
 
 	exe := projectpath.Join("erl/port/testdata/fail_after_time.sh")
@@ -221,7 +216,6 @@ func TestOpts_ReturnExitStatus_WhenZero(t *testing.T) {
 }
 
 func TestOpts_ReturnExitStatus_WhenNonZero(t *testing.T) {
-	t.Skip("TODO: re-enable once done with test failure investigation")
 	self, tr := erl.NewTestReceiver(t)
 
 	exe := projectpath.Join("erl/port/testdata/fail_after_time.sh")
@@ -265,7 +259,6 @@ func TestOpts_ReturnExitStatus_WhenNonZero(t *testing.T) {
 }
 
 func TestOpts_IgnoreStdOut(t *testing.T) {
-	t.Skip("TODO: re-enable once done with test failure investigation")
 	self, tr := erl.NewTestReceiver(t)
 
 	exe := projectpath.Join("erl/port/testdata/fail_after_time.sh")
@@ -300,25 +293,7 @@ func TestOpts_IgnoreStdOut(t *testing.T) {
 	assert.Assert(t, portExit.Port.Equals(port))
 }
 
-// TODO: failed with `lookbusy -c 70` when: 2025-02-13 count: 2
-// port_test.go:329: assertion failed: gotSigMsg is false
-/*
-
--timeout less than DefaultReceiverTimeout, adjusting: 2m45.918980471s    test_receiver.go:165: TestReceiver PID spawned: PID<16>
-time=2025-02-13T07:40:16.753-06:00 level=INFO msg="message received" erltest.test-receiver=cumvcg4nhf2ucsumkrr0-test-receiver pid=PID<16> msg="{Port:PID<17> Data:[115 116 97 114 116 101 100]}"
-time=2025-02-13T07:40:16.753-06:00 level=INFO msg="message received" erltest.test-receiver=cumvcg4nhf2ucsumkrr0-test-receiver pid=PID<16> msg="{Port:PID<17> Err:signal: interrupt}"
-time=2025-02-13T07:40:16.753-06:00 level=INFO msg="message received" erltest.test-receiver=cumvcg4nhf2ucsumkrr0-test-receiver pid=PID<16> msg="{Port:PID<17> Err:signal: interrupt}"
-time=2025-02-13T07:40:16.753-06:00 level=INFO msg="message received" erltest.test-receiver=cumvcg4nhf2ucsumkrr0-test-receiver pid=PID<16> msg="{Proc:PID<17> Reason:EXIT{normal} Link:true}"
-time=2025-02-13T07:43:01.669-06:00 level=INFO msg="test timed out waiting for expectations to be fulfilled" erltest.test-receiver=cumvcg4nhf2ucsumkrr0-test-receiver
-    test_receiver.go:494: An expectation was un-satisifed, but did not report a failure message. This is probably an atLeast expectation that did not meet the minimum invocations. In the future, these will be reported like other expectation failures.
-    port_test.go:329: assertion failed: gotSigMsg is false
-time=2025-02-13T07:43:01.674-06:00 level=INFO msg="executing TestReceiver cleanup..." erltest.test-receiver=cumvcg4nhf2ucsumkrr0-test-receiver
-time=2025-02-13T07:43:01.674-06:00 level=INFO msg="received a TestExit, shutting down" erltest.test-receiver=cumvcg4nhf2ucsumkrr0-test-receiver reason=EXIT{test_exit} sending-proc=PID<1>
-2025/02/13 07:43:01 INFO waitExit caught DownMsg, closing signal channel msg="{Proc:PID<16> Reason:EXIT{normal} Ref:cumvdpcnhf2ucsumkrtg}"
-    test_receiver.go:584: test receiver has stopped: PID<16>
-*/
 func TestOpts_SetExitSignal(t *testing.T) {
-	t.Skip("TODO: re-enable once done with test failure investigation")
 	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
 	var gotIntroMsg bool
 	var gotSigMsg bool
@@ -326,24 +301,24 @@ func TestOpts_SetExitSignal(t *testing.T) {
 
 	exe := projectpath.Join("erl/port/testdata/fail_after_time.sh")
 
-	msgMatcher := func(match string) func(v1 Message, v2 Message) bool {
-		return func(v1 Message, v2 Message) bool {
-			return bytes.Contains(v1.Data, []byte(match)) && bytes.Contains(v2.Data, []byte(match))
-		}
+	msgMatcher := func(v1 Message, v2 Message) bool {
+		return bytes.Contains(v1.Data, v2.Data) || bytes.Contains(v2.Data, v1.Data)
 	}
 
 	tc.Arrange(func(self erl.PID) {
-		tc.Receiver().Expect(Message{}, cmpmock.DiffEq(Message{}, cmp.Comparer(msgMatcher("started")))).Do(func(ea erltest.ExpectArg) {
+		tc.Receiver().Expect(Message{}, cmpmock.DiffEq(Message{Data: []byte("started")}, cmp.Comparer(msgMatcher))).Do(func(ea erltest.ExpectArg) {
 			gotIntroMsg = true
 			Close(self, port)
 		}).Times(1)
-		tc.Receiver().Expect(Message{}, cmpmock.DiffEq(Message{}, cmp.Comparer(msgMatcher("SIGINT")))).Do(func(ea erltest.ExpectArg) {
+		tc.Receiver().Expect(Message{}, cmpmock.DiffEq(Message{Data: []byte("SIGINT")}, cmp.Comparer(msgMatcher))).Do(func(ea erltest.ExpectArg) {
 			gotSigMsg = true
 		}).Times(1)
-		tc.Receiver().Expect(Message{}, cmpmock.DiffEq(Message{}, cmp.Comparer(msgMatcher("loop")))).Do(func(ea erltest.ExpectArg) {
+		tc.Receiver().Expect(Message{}, cmpmock.DiffEq(Message{Data: []byte("loop")}, cmp.Comparer(msgMatcher))).Do(func(ea erltest.ExpectArg) {
 			gotSigMsg = true
 		}).Times(1)
 		tc.Receiver().Expect(Exited{}, gomock.Any()).Times(1)
+		tc.Receiver().Expect(erl.ExitMsg{}, gomock.Any()).Times(1)
+		tc.Receiver().Expect(Closed{}, gomock.Any()).Times(1)
 	})
 
 	tc.Act(func() {
@@ -356,23 +331,14 @@ func TestOpts_SetExitSignal(t *testing.T) {
 	})
 }
 
-// TODO: failed with `lookbusy -c 70` when: 2025-02-13 count: 2
-/*
--timeout less than DefaultReceiverTimeout, adjusting: 994.702799ms    test_receiver.go:165: TestReceiver PID spawned: PID<20>
-time=2025-02-13T07:43:01.674-06:00 level=INFO msg="test timed out waiting for expectations to be fulfilled" erltest.test-receiver=cumvdpcnhf2ucsumkru0-test-receiver
-    test_receiver.go:494: An expectation was un-satisifed, but did not report a failure message. This is probably an atLeast expectation that did not meet the minimum invocations. In the future, these will be reported like other expectation failures.
-time=2025-02-13T07:43:01.674-06:00 level=INFO msg="executing TestReceiver cleanup..." erltest.test-receiver=cumvdpcnhf2ucsumkru0-test-receiver
-time=2025-02-13T07:43:01.675-06:00 level=INFO msg="received a TestExit, shutting down" erltest.test-receiver=cumvdpcnhf2ucsumkru0-test-receiver reason=EXIT{test_exit} sending-proc=PID<1>
-2025/02/13 07:43:01 INFO waitExit caught DownMsg, closing signal channel msg="{Proc:PID<20> Reason:EXIT{normal} Ref:cumvdpcnhf2ucsumks0g}"
-    test_receiver.go:584: test receiver has stopped: PID<20>
-*/
 func TestOpts_ReceiveStderr_GetPortErrMessages(t *testing.T) {
-	t.Skip("TODO: re-enable once done with test failure investigation")
 	// self, tr := erltest.NewReceiver(t)
 	exe := projectpath.Join("erl/port/testdata/echo_stderr.sh")
 	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
 
 	tc.Arrange(func(self erl.PID) {
+		tc.Receiver().Expect(Message{}, gomock.Any()).Times(1)
+		tc.Receiver().Expect(erl.ExitMsg{}, gomock.Any()).Times(1)
 		tc.Receiver().Expect(ErrMessage{}, gomock.Any()).Times(4)
 		tc.Receiver().Expect(Exited{}, gomock.Any()).Times(1)
 	})

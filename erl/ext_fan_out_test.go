@@ -6,15 +6,16 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/mock/gomock"
 	"gotest.tools/v3/assert"
 
 	"github.com/uberbrodt/erl-go/erl"
-	"github.com/uberbrodt/erl-go/erl/erltest"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
 	"github.com/uberbrodt/erl-go/erl/genserver"
 	"github.com/uberbrodt/erl-go/erl/gensrv"
 	"github.com/uberbrodt/erl-go/erl/internal/test"
 	"github.com/uberbrodt/erl-go/erl/supervisor"
+	"github.com/uberbrodt/erl-go/erl/x/erltest"
 )
 
 // when a producer or consumer receives this message, it
@@ -249,9 +250,11 @@ func ProducerStartLink(self erl.PID, conf producerConfig) (erl.PID, error) {
 
 func TestExt_WorkerFanOut(t *testing.T) {
 	test.SlowTest(t)
-	testPID, _ := erltest.NewReceiver(t, erltest.WaitTimeout(3*time.Minute))
+	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(3*time.Minute))
 	stop := 500
 	workerCnt := 16
+
+	tr.Expect(erl.ExitMsg{}, gomock.Any()).AnyTimes()
 
 	producer, err := ProducerStartLink(testPID, producerConfig{stop: stop, t: t})
 	assert.NilError(t, err)
