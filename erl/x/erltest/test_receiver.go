@@ -179,7 +179,7 @@ func NewReceiver(t TLike, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 	}
 	pid := erl.Spawn(tr)
 	tr.setSelf(pid)
-	t.Logf("TestReceiver PID spawned: %+v", pid)
+	t.Logf("%s - [%v] spawned\n", time.Now().Format(time.RFC3339Nano), tr)
 
 	erl.ProcessFlag(pid, erl.TrapExit, true)
 	t.Cleanup(func() {
@@ -210,6 +210,7 @@ type TestReceiver struct {
 	opts        receiverOptions
 	exiting     bool
 	log         *slog.Logger
+	openSig     chan struct{}
 }
 
 func (tr *TestReceiver) getExiting() bool {
@@ -406,7 +407,7 @@ func (tr *TestReceiver) ExpectCall(matchTerm any, m Matcher, reply any) *Expecta
 }
 
 func (tr *TestReceiver) timeout() {
-	tr.t.Errorf("TestReceiver %v timed out waiting for expectation to be fulfilled\n", tr)
+	tr.t.Errorf("%s - [%v] timed out waiting for expectation to be fulfilled\n", time.Now().Format(time.RFC3339Nano), tr)
 	tr.printUnsatisifed()
 	tr.printUnmatchedMsgs()
 }
@@ -446,13 +447,17 @@ func (tr *TestReceiver) printUnsatisifed() {
 // Call this after you have sent your messages
 func (tr *TestReceiver) Wait() {
 	now := time.Now()
+	tr.t.Logf("%s - [%v]] waiting for expectations to be fulfilled", now.Format(time.RFC3339Nano), tr)
 
 	if tr.expectations.howMany() == 0 {
+		tr.t.Logf("%s - [%v] no expectations, returning from Wait()", time.Now().Format(time.RFC3339Nano), tr)
 		return
 	}
 	// we use a local variable here so we don't increase lock contentention calling
 	// tr.setTestEnded every iteration
 	if tr.t.Failed() {
+		tr.t.Logf("%s - [%v] test failed, returning from Wait()", time.Now().Format(time.RFC3339Nano), tr)
+		return
 		tr.printUnsatisifed()
 		tr.printUnmatchedMsgs()
 		return
@@ -462,11 +467,13 @@ func (tr *TestReceiver) Wait() {
 		for {
 			// if the test has failed, exit
 			if tr.t.Failed() {
+				tr.t.Logf("%s - [%v] test failed, returning from Wait()", time.Now().Format(time.RFC3339Nano), tr)
 				tr.printUnsatisifed()
 				tr.printUnmatchedMsgs()
 				return
 			}
 			if time.Since(now) >= tr.opts.waitTimeout {
+				tr.t.Logf("%s - [%v] wait timeout expired", time.Now().Format(time.RFC3339Nano), tr)
 				break
 			}
 			runtime.Gosched()
@@ -476,18 +483,20 @@ func (tr *TestReceiver) Wait() {
 
 	for {
 		if time.Since(now) > tr.opts.waitExit {
+			tr.t.Logf("%s - [%v] test timed out in Wait()\n", time.Now().Format(time.RFC3339Nano), tr)
 			tr.timeout()
 			return
 		}
 
 		if tr.t.Failed() {
+			tr.t.Logf("%s - [%v] test failed, returning from Wait()\n", time.Now().Format(time.RFC3339Nano), tr)
 			tr.printUnsatisifed()
 			tr.printUnmatchedMsgs()
 			return
 		}
 
 		if tr.expectations.IsSatisifed() {
-			fmt.Println("expectations all satisfied, returning from wait")
+			tr.t.Logf("%s - [%v] expectations all satisfied, returning from Wait()\n", time.Now().Format(time.RFC3339Nano), tr)
 			return
 		}
 
@@ -499,28 +508,30 @@ func (tr *TestReceiver) Wait() {
 // will cause the test receiver to exit, sending signals to linked and monitoring
 // processes. This is not needed for normal test cleanup (that is handled via [t.Cleanup()])
 func (tr *TestReceiver) Stop() {
-	// first, stop dependencies
+	tr.t.Logf("%s - [%v] stopping...\n", time.Now().Format(time.RFC3339Nano), tr)
 	if !erl.IsAlive(tr.getSelf()) {
+		tr.t.Logf("%s - [%v] testreceiver dead, returning from Stop()\n", time.Now().Format(time.RFC3339Nano), tr)
 		return
 	}
 
 	var depWG sync.WaitGroup
+	// first, stop dependencies
 	if len(tr.deps) > 0 {
 		depWG.Add(len(tr.deps))
 
 		for _, dep := range tr.deps {
 			_, err := exitwaiter.New(tr.t, tr.getSelf(), dep, &depWG)
 			if err != nil {
-				tr.t.Errorf("FAILURE: testreceiver %s could not start exitwaiter for dep %+v: %+v", tr.getSelf(), dep, err)
+				tr.t.Errorf("FAILURE: testreceiver %s could not start exitwaiter for dep %+v: %+v\n", tr.getSelf(), dep, err)
 				return
 			}
 			erl.Exit(tr.opts.parent, dep, exitreason.Kill)
 
 		}
 
-		tr.t.Logf("test receiver %+v waiting for deps to stop", tr.getSelf())
+		tr.t.Logf("%s - [%v] waiting for deps to stop\n", time.Now().Format(time.RFC3339Nano), tr)
 		depWG.Wait()
-		tr.t.Logf("test receiver %+v deps stopped", tr.getSelf())
+		tr.t.Logf("%s - [%v] deps stopped\n", time.Now().Format(time.RFC3339Nano), tr)
 	}
 
 	if !erl.IsAlive(tr.getSelf()) {
@@ -530,12 +541,13 @@ func (tr *TestReceiver) Stop() {
 	wg.Add(1)
 	_, err := exitwaiter.New(tr.t, tr.opts.parent, tr.getSelf(), &wg)
 	if err != nil {
-		tr.t.Errorf("FAILURE starting exitwaiter for test process: %+v", err)
+		tr.t.Errorf("FAILURE starting exitwaiter for test process: %+v\n", err)
 		return
 	}
 	erl.Exit(tr.opts.parent, tr.getSelf(), exitreason.TestExit)
+	tr.t.Logf("%s - [%v] waiting for exit\n", time.Now().Format(time.RFC3339Nano), tr)
 	wg.Wait()
-	tr.t.Logf("test receiver has stopped: %s ", tr.getSelf())
+	tr.t.Logf("test receiver has stopped: %s\n", tr.getSelf())
 }
 
 func (tr *TestReceiver) Failures() []*ExpectationFailure {

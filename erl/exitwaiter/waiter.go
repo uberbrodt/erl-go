@@ -57,7 +57,9 @@ func initSrv(self erl.PID, args any) (westate, any, error) {
 
 	erl.ProcessFlag(self, erl.TrapExit, true)
 
+	slog.Info("initalizing exit waiter")
 	ref := erl.Monitor(self, conf.waitinOn)
+	slog.Info("monitor taken", "ref", ref)
 
 	if !ok {
 		return westate{}, nil, exitreason.Exception(errors.New("init arg must be a weConfig{}"))

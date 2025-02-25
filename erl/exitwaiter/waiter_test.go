@@ -63,7 +63,7 @@ func TestClosesWaitGroupIfProcessAlreadyDead(t *testing.T) {
 	t.Logf("[%s] Subject initialized", time.Now().Format(time.RFC3339Nano))
 
 	erl.Exit(erl.RootPID(), pid, exitreason.Kill)
-	t.Logf("[%s] kill signal sent to %+v, now calling wg.Wait()", time.Now().Format(time.RFC3339Nano), pid)
+	t.Logf("[%s] kill signal sent to %+v", time.Now().Format(time.RFC3339Nano), pid)
 
 	_, err = exitwaiter.New(t, erl.RootPID(), pid, &wg)
 	assert.NilError(t, err)

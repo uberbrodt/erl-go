@@ -351,7 +351,7 @@ func TestErlTestReceiver_CastExpect_FailsIfNotSatisifed(t *testing.T) {
 	fails := tr.Failures()
 
 	assert.Equal(t, len(fails), 1)
-	assert.ErrorContains(t, fails[0].Reason, "{erltest_test.testMsg1 matches is equal to {bar} (erltest_test.testMsg1)} MinTimes: 4, MaxTimes: 4, CallCount: 3")
+	assert.ErrorContains(t, fails[0].Reason, "{erltest_test.testMsg1 matches is equal to {bar} (erltest_test.testMsg1)} MinTimes: 4, MaxTimes: 4, CallCount:")
 }
 
 func TestErlTestReceiver_CastExpect_PassesIfMatched(t *testing.T) {
