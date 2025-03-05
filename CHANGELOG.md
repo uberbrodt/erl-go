@@ -1,13 +1,40 @@
 # Changelog
 
 
-## NEXT
+## 0.19.0 2025-3-5
+
+### Changed
+- added `Drain` method to inbox
+- `erl/erltest` is now deprecated. The matchers and logging were not great, and
+  there were some race conditions that would be difficult to resolve.
+- `make test` will now use `-shuffle` and `-failfast` testflags.
+- Use new `x/erltest` everywhere.
+
+
+### Fixed
+- Fixed message dropping in `erl/internal/inbox`.
+- The goroutine spawned by `Inbox.Channel()` now terminates when inbox is closed.
+- Processes will drain the inbox when exiting and process link and monitor
+  signals. There was an edge case where process Runnable could fail before the
+  link/monitor signals were processed.
+- Starting a genserver is now synchronous for Supervisors or any process that is
+  trapping exits, and the calling process will not need to handle the return
+  error and the exit signal.
+
+### Added
+- `erl/x/erltest` is the replacement for `erl/erltest` that uses `gomock` Matchers and more
+  closely simulates its behaviour. Eventually it will be moved to the
+  `erl/erltest` package before 1.0.
+- Added  test stub, `testserver.TestServer` which can be used to create a
+  GenServer for test purposes without defining a new state. Also includes some
+  helper Init Functions.
 
 ### Changed
 - removed dependence on `exp` package. Only major changes was handling `iter.Seq` when using
   the `maps` package.
 - upgraded deps
 - added a go.mod to `examples/basic`, making it a module.
+- return down signal in erl.Monitor if linkee is already down
 
 
 ## 0.18.1 2024-12-13
@@ -61,8 +88,7 @@ experience
   `expect.Times(3)`, if you receiver a 4th messages AFTER the WaitTimeout, your
   test will not fail. This is a compromise for a hard problem to solve, given
   that test runtimes vary widely between developer computers and CI.
-- erltest.TestReceiver has an "adaptive" timeout for test exit now. If the
-  "-timeout" value is  less than the DefaultReceiverTimeout, it will be used
+- erltest.TestReceiver has an "adaptive" timeout for test exit now. If the "-timeout" value is  less than the DefaultReceiverTimeout, it will be used
   instead. The goal is always exit before the timeout so that we print the
   missed expectations.
 - Don't use the `t.Log` calls inside the TestReceiver process; it's very
