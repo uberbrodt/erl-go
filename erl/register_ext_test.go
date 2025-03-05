@@ -6,15 +6,16 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/mock/gomock"
 	"gotest.tools/v3/assert"
 
 	"github.com/uberbrodt/erl-go/erl"
-	"github.com/uberbrodt/erl-go/erl/erltest"
-	"github.com/uberbrodt/erl-go/erl/erltest/check"
-	"github.com/uberbrodt/erl-go/erl/erltest/expect"
-	"github.com/uberbrodt/erl-go/erl/erltest/testcase"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
 	"github.com/uberbrodt/erl-go/erl/internal/test"
+	"github.com/uberbrodt/erl-go/erl/x/erltest"
+	"github.com/uberbrodt/erl-go/erl/x/erltest/check"
+	"github.com/uberbrodt/erl-go/erl/x/erltest/testcase"
+	"github.com/uberbrodt/erl-go/erl/x/erltest/testserver"
 )
 
 type NamedProcess struct{}
@@ -27,7 +28,7 @@ func (np NamedProcess) Receive(self erl.PID, inbox <-chan any) error {
 }
 
 func TestRegistration_ReRegisterNameAfterDownMsg(t *testing.T) {
-	name := erl.Name("my_pid")
+	name := erl.Name("49e71d92-bf7d-4ce2-8eca-10bafa7a09e8")
 	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
 
 	var pid erl.PID
@@ -40,7 +41,7 @@ func TestRegistration_ReRegisterNameAfterDownMsg(t *testing.T) {
 		assert.Assert(t, err == nil)
 		_ = erl.Monitor(self, pid)
 
-		tc.Receiver().Expect(erl.DownMsg{}, expect.Called(expect.Times(1)))
+		tc.Receiver().Expect(erl.DownMsg{}, gomock.Any())
 	})
 
 	tc.Act(func() {
@@ -83,16 +84,17 @@ func TestRegistration_InvalidNames(t *testing.T) {
 func TestRegistration_NameInUse(t *testing.T) {
 	var result *erl.RegistrationError
 	var otherPID erl.PID
+	name := erl.Name("7782cdab-b213-4a4d-822c-02b2c235b629")
 
 	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
 
 	tc.Arrange(func(self erl.PID) {
 		otherPID, _ = erltest.NewReceiver(t)
-		result = erl.Register(erl.Name("my_pid"), tc.TestPID())
+		result = erl.Register(name, tc.TestPID())
 	})
 
 	tc.Act(func() {
-		result = erl.Register(erl.Name("my_pid"), otherPID)
+		result = erl.Register(name, otherPID)
 	})
 
 	tc.Assert(func() {
@@ -102,8 +104,8 @@ func TestRegistration_NameInUse(t *testing.T) {
 
 func TestRegistration_AlreadyRegistered(t *testing.T) {
 	var result *erl.RegistrationError
-	name := erl.Name("my_pid")
-	otherName := erl.Name("my_pid")
+	name := erl.Name("ae081f4d-4022-42aa-8371-0b211f00c9d4")
+	otherName := erl.Name("d8683df9-1e57-4692-8ad1-22e42a8bead5")
 
 	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
 
@@ -124,6 +126,7 @@ func TestRegistration_AlreadyRegistered(t *testing.T) {
 
 func TestRegistration_BadPidReturnsNoProc(t *testing.T) {
 	var result *erl.RegistrationError
+	name := erl.Name("30d43088-290f-4b5b-a89e-4fc07877e786")
 
 	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
 
@@ -131,7 +134,7 @@ func TestRegistration_BadPidReturnsNoProc(t *testing.T) {
 	})
 
 	tc.Act(func() {
-		result = erl.Register(erl.Name("my_pid"), erl.PID{})
+		result = erl.Register(name, erl.PID{})
 	})
 
 	tc.Assert(func() {
@@ -142,7 +145,7 @@ func TestRegistration_BadPidReturnsNoProc(t *testing.T) {
 func TestWhereIs_NameFound(t *testing.T) {
 	var found bool
 	var foundPID erl.PID
-	name := erl.Name("my_pid")
+	name := erl.Name("08cf9e7e-440e-4bf1-b805-0dbfbfa4c823")
 
 	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
 
@@ -164,8 +167,8 @@ func TestWhereIs_NameFound(t *testing.T) {
 func TestWhereIs_NameNotFound(t *testing.T) {
 	var found bool
 	var foundPID erl.PID
-	name := erl.Name("my_pid")
-	badName := erl.Name("foo")
+	name := erl.Name("3b0da840-bb5d-44c3-b5f9-68375c81c41a")
+	badName := erl.Name("61e3f530-e138-438c-8b91-2b76ecec62cc")
 
 	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
 
@@ -185,7 +188,7 @@ func TestWhereIs_NameNotFound(t *testing.T) {
 }
 
 func TestRegistration_ReRegisterNameAfterExitMsg(t *testing.T) {
-	name := erl.Name("my_pid")
+	name := erl.Name("7c5e8d3e-1bcb-44c3-bc48-e87a4b96196e")
 	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
 
 	var pid erl.PID
@@ -198,7 +201,7 @@ func TestRegistration_ReRegisterNameAfterExitMsg(t *testing.T) {
 		assert.Assert(t, err == nil)
 		erl.Link(self, pid)
 
-		tc.Receiver().Expect(erl.ExitMsg{}, expect.Called(expect.Times(1)))
+		tc.Receiver().Expect(erl.ExitMsg{}, gomock.Any()).Times(1)
 	})
 
 	tc.Act(func() {
@@ -215,34 +218,35 @@ func TestRegistration_ReRegisterNameAfterExitMsg(t *testing.T) {
 	})
 }
 
+// This is testing a tight loop of name re-registration. We want to make sure that
+// we can re-register a name after an exit signal for the named process is received.
 func TestRegistration_MassRegistration(t *testing.T) {
 	test.SlowTest(t)
-	for i := 0; i < 20; i++ {
-		tc := testcase.New(t, erltest.WaitTimeout(30*time.Second))
-		name := erl.Name(fmt.Sprintf("my_pid-%d", i))
+	names := make([]erl.Name, 0, 200)
+	for i := range 200 {
+		names = append(names, erl.Name(fmt.Sprintf("my_pid-%d", i)))
+	}
 
-		var pid erl.PID
+	for _, name := range names {
 
-		tc.Arrange(func(self erl.PID) {
-			// pid = tc.Spawn(erltest.NewReceiver(t))
-			pid = erl.Spawn(NamedProcess{})
-			err := erl.Register(name, pid)
+		self, tr := erltest.NewReceiver(t, erltest.WaitTimeout(0))
 
-			assert.Assert(t, err == nil)
-			_ = erl.Monitor(self, pid)
+		tr.Expect(erl.DownMsg{}, gomock.Any()).Times(1)
+		pid, _, err := testserver.StartMonitor(self, testserver.NewConfig())
+		assert.Assert(t, err == nil)
+		err = erl.Register(name, pid)
+		t.Logf("registration error: %+v", err)
 
-			tc.Receiver().Expect(erl.DownMsg{}, expect.Called(expect.AtLeast(1)))
-		})
+		var nilErr *erl.RegistrationError
+		assert.Equal(t, err, nilErr)
 
-		tc.Act(func() {
-			erl.Exit(tc.TestPID(), pid, exitreason.Normal)
-		})
+		t.Log("sending exit...")
+		erl.Exit(self, pid, exitreason.Normal)
+		tr.Wait()
 
-		tc.Assert(func() {
-			pid2 := erl.Spawn(NamedProcess{})
-			err := erl.Register(name, pid2)
-			t.Logf("registration error: %+v", err)
-			assert.Assert(t, err == nil)
-		})
+		pid2 := erl.Spawn(NamedProcess{})
+		err = erl.Register(name, pid2)
+		t.Logf("registration error: %+v", err)
+		assert.Equal(t, err, nilErr)
 	}
 }

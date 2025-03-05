@@ -2,13 +2,12 @@ package erl_test
 
 import (
 	"testing"
-	"time"
+
+	"go.uber.org/mock/gomock"
 
 	"github.com/uberbrodt/erl-go/erl"
-	"github.com/uberbrodt/erl-go/erl/erltest"
-	"github.com/uberbrodt/erl-go/erl/erltest/check"
-	"github.com/uberbrodt/erl-go/erl/erltest/expect"
-	"github.com/uberbrodt/erl-go/erl/erltest/testcase"
+	"github.com/uberbrodt/erl-go/erl/x/erltest"
+	"github.com/uberbrodt/erl-go/erl/x/erltest/testcase"
 )
 
 type TestMsg struct {
@@ -16,33 +15,26 @@ type TestMsg struct {
 }
 
 func TestExtMessageOrdering(t *testing.T) {
-	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
-
-	expected := []TestMsg{
-		{Name: "Blue"},
-		{Name: "Green"},
-		{Name: "Red"},
-		{Name: "Orange"},
-		{Name: "Black"},
-		{Name: "Purple"},
-		{Name: "Yellow"},
-		{Name: "Chartruse"},
-	}
-
-	expectMsgs := func(msgs []TestMsg) *expect.Expectation {
-		ex := expect.New(func(arg erltest.ExpectArg) (erltest.Expectation, *erltest.ExpectationFailure) {
-			head, tail := msgs[0], msgs[1:]
-			msgs = tail
-			if ok := check.DeepEqual(t, head, arg.Msg); !ok {
-				return nil, erltest.Fail(arg, "Msgs don't match")
-			}
-			return nil, nil
-		}, expect.AtLeast(len(msgs)))
-		return ex
-	}
+	tc := testcase.New(t, erltest.WaitTimeout(0))
 
 	tc.Arrange(func(self erl.PID) {
-		tc.Receiver().Expect(TestMsg{}, expectMsgs(expected))
+		// tc.Receiver().Expect(TestMsg{}, expectMsgs(expected))
+		blueEx := tc.Receiver().Expect(TestMsg{}, gomock.Eq(TestMsg{Name: "Blue"}))
+		greenEx := tc.Receiver().Expect(TestMsg{}, gomock.Eq(TestMsg{Name: "Green"}))
+		redEx := tc.Receiver().Expect(TestMsg{}, gomock.Eq(TestMsg{Name: "Red"}))
+		orangeEx := tc.Receiver().Expect(TestMsg{}, gomock.Eq(TestMsg{Name: "Orange"}))
+		blackEx := tc.Receiver().Expect(TestMsg{}, gomock.Eq(TestMsg{Name: "Black"}))
+		purpleEx := tc.Receiver().Expect(TestMsg{}, gomock.Eq(TestMsg{Name: "Purple"}))
+		yellowEx := tc.Receiver().Expect(TestMsg{}, gomock.Eq(TestMsg{Name: "Yellow"}))
+		chartruseEx := tc.Receiver().Expect(TestMsg{}, gomock.Eq(TestMsg{Name: "Chartruse"}))
+		chartruseEx.After(
+			yellowEx.After(
+				purpleEx.After(
+					blackEx.After(
+						orangeEx.After(
+							redEx.After(
+								greenEx.After(
+									blueEx)))))))
 	})
 
 	tc.Act(func() {

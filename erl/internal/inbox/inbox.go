@@ -8,7 +8,7 @@ import (
 
 type Inbox[M any] struct {
 	msgQ   []M
-	mx     sync.RWMutex
+	mx     sync.Mutex
 	done   chan struct{}
 	closed bool
 	cond   *sync.Cond
@@ -19,7 +19,7 @@ type Inbox[M any] struct {
 // append itself to the end of a message queue. To read these messages,
 // there are four methods:
 //
-//  1. Calling [Pop], which will return one message at a time.
+//  1. Calling [Pop], which will return one message or nothing.
 //  2. Calling [BlockingPop], which will wait until there is a message available or the inbox is closed.
 //  3. A for-range loop with [Iter]
 //  4. [Channel], which will return a channel that will receive a message one at a time.
@@ -31,7 +31,7 @@ func New[M any]() *Inbox[M] {
 		msgQ: make([]M, 0, 10),
 		done: make(chan struct{}),
 	}
-	i.cond = sync.NewCond(&sync.Mutex{})
+	i.cond = sync.NewCond(&i.mx)
 	return i
 }
 
@@ -41,20 +41,13 @@ func (i *Inbox[M]) Enqueue(msg M) bool {
 	defer i.mx.Unlock()
 
 	if i.closed {
-		i.cond.Broadcast()
 		return false
 	}
 
 	i.msgQ = append(i.msgQ, msg)
-
 	i.cond.Broadcast()
-	return true
-}
 
-func (i *Inbox[M]) Sync() *sync.Cond {
-	// i.mx.Lock()
-	// defer i.mx.Unlock()
-	return i.cond
+	return true
 }
 
 // get and remove a value from the inbox. This is safe to call from multiple go routines.
@@ -72,8 +65,7 @@ func (i *Inbox[M]) Pop() (item M, ok bool, closed error) {
 	}
 
 	head := i.msgQ[0]
-	tail := i.msgQ[1:]
-	i.msgQ = tail
+	i.msgQ = i.msgQ[1:]
 
 	return head, true, nil
 }
@@ -86,31 +78,43 @@ func (i *Inbox[M]) Pop() (item M, ok bool, closed error) {
 // messages.
 // Under the hood, this is using [sync.Cond] to sleep callers until there are messages.
 func (i *Inbox[M]) BlockingPop() (item M, ok bool, closed error) {
-	c := i.Sync()
-	c.L.Lock()
-	defer c.L.Unlock()
-	item, ok, closed = i.Pop()
-	if closed != nil {
-		return
+	i.mx.Lock()
+	defer i.mx.Unlock()
+
+	for len(i.msgQ) == 0 && !i.closed {
+		i.cond.Wait()
 	}
-	if !ok {
-		c.Wait()
-		return i.Pop()
+
+	if i.closed {
+		return item, false, fmt.Errorf("inbox closed")
 	}
-	return
+	if len(i.msgQ) == 0 {
+		return item, false, nil
+	}
+
+	head := i.msgQ[0]
+	i.msgQ = i.msgQ[1:]
+
+	return head, true, nil
 }
 
+// Returns a channel that will receive values from the Inbox until it is closed
 func (i *Inbox[M]) Channel() <-chan M {
 	c := make(chan M)
 
 	go func() {
-		for item, ok := range i.Iter() {
+		defer close(c)
+
+		for {
+			item, ok, closed := i.BlockingPop()
+			if closed != nil {
+				return // Inbox closed, terminate the goroutine
+			}
 			if !ok {
 				continue
 			}
 			c <- item
 		}
-		close(c)
 	}()
 	return c
 }
@@ -126,35 +130,17 @@ func (i *Inbox[M]) Channel() <-chan M {
 //		sig <- item
 //	}
 //
-// The loop will exit when the inbox is closed. Note that you need to check
+// The iterator will exhaust when the inbox is closed. Note that you need to check
 // [ok] still to ensure that you actually got a value, since multiple go routines
 // may be reading off this same machine.
 func (i *Inbox[M]) Iter() iter.Seq2[M, bool] {
 	return func(yield func(M, bool) bool) {
-		c := i.Sync()
-		c.L.Lock()
-		defer c.L.Unlock()
 		for {
-			item, ok, closed := i.Pop()
+			item, ok, closed := i.BlockingPop()
 			if closed != nil {
 				return
 			}
-			if !ok {
-				// no message so we wait
-				c.Wait()
-				item2, ok2, closed := i.Pop()
-				if closed != nil {
-					return
-				}
-				if !yield(item2, ok2) {
-					return
-				}
 
-				// get next message
-				continue
-
-			}
-			// got a message so no reason to wait
 			if !yield(item, ok) {
 				return
 			}
@@ -164,10 +150,27 @@ func (i *Inbox[M]) Iter() iter.Seq2[M, bool] {
 
 // Return the number of items in the Inbox
 func (i *Inbox[M]) Size() int {
-	i.mx.RLock()
-	defer i.mx.RUnlock()
+	i.mx.Lock()
+	defer i.mx.Unlock()
 
 	return len(i.msgQ)
+}
+
+// returns everything in the message queue
+func (i *Inbox[M]) Drain() []M {
+	i.mx.Lock()
+	defer i.mx.Unlock()
+	if i.closed {
+		return i.msgQ
+	}
+
+	result := make([]M, len(i.msgQ))
+	copy(result, i.msgQ)
+	i.closed = true
+	close(i.done)
+	i.cond.Broadcast()
+
+	return i.msgQ
 }
 
 // closees all iterators and channels associated from this inbox, and prevents
@@ -175,9 +178,11 @@ func (i *Inbox[M]) Size() int {
 func (i *Inbox[M]) Close() {
 	i.mx.Lock()
 	defer i.mx.Unlock()
-	// shut down the receiver go routines
-
-	i.cond.Broadcast()
-	close(i.done)
+	if i.closed {
+		return
+	}
 	i.closed = true
+	// shut down the receiver go routines
+	close(i.done)
+	i.cond.Broadcast()
 }

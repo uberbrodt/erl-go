@@ -1,9 +1,11 @@
 package erl
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"runtime/debug"
+	"runtime/trace"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -18,6 +20,11 @@ var nextProcessID atomic.Int64
 
 // this stores monitors that other processes take on a process
 type pMonitor struct {
+	pid PID
+	ref Ref
+}
+
+type spawnMonitor struct {
 	pid PID
 	ref Ref
 }
@@ -40,6 +47,12 @@ type Process struct {
 	trapMutex       sync.RWMutex
 	// the local name of the pid, optional
 	_name Name
+	// if set, process sets itself as monitored by PID before anything else
+	spawnMonitor *spawnMonitor
+	// if set, process sets a link with PID before anything else
+	spawnLink *PID
+	taskCtx   context.Context
+	traceTask *trace.Task
 }
 
 func (p *Process) String() string {
@@ -51,47 +64,59 @@ func (p *Process) String() string {
 }
 
 func (p *Process) run() {
+	p.taskCtx, p.traceTask = trace.NewTask(context.Background(), "erl.process")
+	defer p.traceTask.End()
+	// if set, this was created via [SpawnMonitor], and we MUST set the monitor before we start processing the inbox
+	// so that if the Runnable exits immediately, the [DownMsg] will be sent
+	if p.spawnMonitor != nil {
+		DebugPrintf("[%+v] setting spawn monitor for %+v", p.self(), p.spawnMonitor.pid)
+		monitorSig := monitorSignal{ref: p.spawnMonitor.ref, monitor: p.spawnMonitor.pid, monitored: p.self()}
+		sendSignal(p.spawnMonitor.pid, monitorSig)
+		p.monitors = append(p.monitors, pMonitor{pid: p.spawnMonitor.pid, ref: p.spawnMonitor.ref})
+	}
+
+	if p.spawnLink != nil {
+		DebugPrintf("[%+v] setting spawn link for %+v", p.self(), *p.spawnLink)
+		sendSignal(*p.spawnLink, linkSignal{pid: p.self()})
+		p.links = append(p.links, *p.spawnLink)
+
+	}
+
+	trace.Log(p.taskCtx, "erl.PID", p.self().String())
+
 	// start a go routine that will handle the [Runnable] and feed it [messageSignal]s
 	go func() {
-		var result error
-		defer func() {
-			// if the [Runnable] panics, we log it and put an Exception reason on the done channel
-			if r := recover(); r != nil {
-				e, ok := r.(error)
-				if ok {
-					result = fmt.Errorf("%v Runnable.Receive panicked: %w, stack: %+v", p, e, string(debug.Stack()))
-				} else {
-					result = fmt.Errorf("%v Runnable.Receive panicked: %s: stack: %+v", p, r, string(debug.Stack()))
+		trace.WithRegion(p.taskCtx, "erl.process.runnable", func() {
+			trace.Log(p.taskCtx, "erl.PID", p.self().String())
+
+			var result error
+			defer func() {
+				// if the [Runnable] panics, we log it and put an Exception reason on the done channel
+				if r := recover(); r != nil {
+					e, ok := r.(error)
+					if ok {
+						result = fmt.Errorf("%v Runnable.Receive panicked: %w, stack: %+v", p, e, string(debug.Stack()))
+					} else {
+						result = fmt.Errorf("%v Runnable.Receive panicked: %s: stack: %+v", p, r, string(debug.Stack()))
+					}
+					Logger.Println(result)
+					p.done <- exitreason.Exception(result)
+
 				}
-				Logger.Println(result)
-				p.done <- exitreason.Exception(result)
+			}()
+
+			runnableExitReason := p.runnable.Receive(PID{p: p}, p.runnableReceive.Channel())
+			if runnableExitReason == nil {
+				runnableExitReason = exitreason.Normal
 			}
-		}()
-
-		// the channel used in [Runnable.Receive]
-		c := make(chan any)
-
-		go func() {
-			for msg, ok := range p.runnableReceive.Iter() {
-				if !ok {
-					continue
-				}
-
-				c <- msg
+			if result != nil {
+				Logger.Printf("%v runnable exited with error: %s\r", p, result)
+			} else {
+				DebugPrintf("%v runnable exited\r", p)
 			}
-		}()
-
-		runnableExitReason := p.runnable.Receive(PID{p: p}, c)
-		if runnableExitReason == nil {
-			runnableExitReason = exitreason.Normal
-		}
-		if result != nil {
-			Logger.Printf("%v runnable exited with error: %s\r", p, result)
-		} else {
-			DebugPrintf("%v runnable exited\r", p)
-		}
-		p.done <- runnableExitReason
-		close(p.done)
+			p.done <- runnableExitReason
+			close(p.done)
+		})
 	}()
 	sigChannel := p.receive.Channel()
 	for {
@@ -108,19 +133,149 @@ func (p *Process) run() {
 
 		// We got a signal from another process
 		case signal, open := <-sigChannel:
-			if !open {
-				DebugPrintf("%v process got inbox closed, should have exited before this.", p)
+			var stop bool
+			trace.WithRegion(p.taskCtx, "erl.process.signalhandler", func() {
+				if !open {
+					DebugPrintf("%v process got inbox closed, should have exited before this.", p)
+					stop = true
+					return
+				}
+				DebugPrintf("%v received %s signal\r", p.self(), signal.SignalName())
+				switch sig := signal.(type) {
+
+				case monitorSignal:
+					p.handleMonitorSignal(sig)
+				case demonitorSignal:
+					p.handleDemonitorSignal(sig)
+
+				case linkSignal:
+					p.handleLinkSignal(sig)
+				case unlinkSignal:
+					p.handleUnlinkSignal(sig)
+				// all message signals go to the runnable
+				case messageSignal:
+					if p.getStatus() == running {
+						p.runnableReceive.Enqueue(sig.term)
+					}
+				case downSignal:
+					if p.getStatus() == running {
+
+						_, ok := p.monitoring[sig.ref]
+						if !ok {
+							Logger.Printf("%v, got a DOWN signal but could not match Ref %+v\r", p.self(), sig)
+							break
+						}
+						// convert to an [erl.DownMsg] and send to the Runnable
+						p.runnableReceive.Enqueue(downMsgfromSignal(sig))
+						// for custom message types
+						// this should happen as a result of a linked process existing or someone calling [Exit] on the process.
+					}
+				case exitSignal:
+					if p.getStatus() == running {
+						// can't trap Kill if it's sent to us, but if a linked process exited with reason Kill,
+						// then we can still trap the exit below
+						if errors.Is(sig.reason, exitreason.Kill) && !sig.link {
+							p.exit(sig.reason)
+							stop = true
+							return
+						}
+
+						// if we're trapping exits, send the signal to the runnable for them to deal with, don't exit.
+						if p.trapExits() {
+							DebugPrintf("%+v Trapped exit signal from %+v", p.self(), sig.sender)
+							p.runnableReceive.Enqueue(exitMsgFromSignal(sig))
+							DebugPrintf("%v sent exitMsg", p.self())
+						} else {
+							// ignore normal exits from other processes when not trapping exits; [exitreason.Normal] is
+							// a valid way to exit from within a process, but an external process can't generate an
+							// exitsignal with it.
+							if errors.Is(sig.reason, exitreason.Normal) && sig.link && !sig.sender.Equals(p.self()) {
+								// continue
+								return
+							}
+							p.exit(sig.reason)
+							stop = true
+							return
+						}
+					}
+				}
+			})
+			if stop {
 				return
 			}
-			DebugPrintf("%v received %s signal\r", p.self(), signal.SignalName())
+
+		}
+	}
+}
+
+func (p *Process) handleMonitorSignal(sig monitorSignal) {
+	if p.getStatus() != running {
+		sig.monitor.p.send(downSignal{proc: p.self(), ref: sig.ref, reason: exitreason.NoProc})
+		return
+		// continue
+	}
+	// this is a monitor we took of another process
+	if sig.monitor.Equals(p.self()) {
+		p.monitoring[sig.ref] = sig.monitored
+	} else {
+		// this is a monitor another process took of us
+		p.monitors = append(p.monitors, pMonitor{pid: sig.monitor, ref: sig.ref})
+	}
+}
+
+func (p *Process) handleDemonitorSignal(sig demonitorSignal) {
+	if sig.origin.Equals(p.self()) {
+		monitoredPid := p.monitoring[sig.ref]
+		sendSignal(monitoredPid, sig)
+		delete(p.monitoring, sig.ref)
+	} else {
+		p.monitors = fun.Filter(p.monitors, func(v pMonitor) bool {
+			return v.ref != sig.ref && v.pid != sig.origin
+		})
+	}
+}
+
+func (p *Process) handleLinkSignal(sig linkSignal) {
+	if p.getStatus() != running {
+		sig.pid.p.send(exitSignal{sender: p.self(), receiver: sig.pid, reason: exitreason.NoProc, link: true})
+		// continue
+		return
+	}
+	if !slices.Contains(p.links, sig.pid) {
+		p.links = append(p.links, sig.pid)
+	}
+}
+
+func (p *Process) handleUnlinkSignal(sig unlinkSignal) {
+	idx := slices.Index(p.links, sig.pid)
+	if idx != -1 {
+		p.links = slices.Delete(p.links, idx, idx+1)
+	} else {
+		Logger.Printf("%v received an unlink signal for %+v, but one could not be found\r", p.self(), sig.pid)
+	}
+}
+
+func (p *Process) exit(e error) {
+	trace.WithRegion(p.taskCtx, "erl.process.exit", func() { // set status to exiting so that our main loop doesn't send signals twice.
+		DebugPrintf("process %v exiting...", p)
+		p.setStatus(exiting)
+		if p.getName() != "" {
+			DebugPrintf("%v unregistering name: %s", p, p.getName())
+			Unregister(p.getName())
+
+		}
+
+		// now that no more messages are getting onto the inbox, read the whole thing
+		// and process any monitor, demonitor, link and unlink signals so that
+		// anything that called Monitor or Link on this process after we got a signal to exit
+		// and before we setStatus to exiting will get the signals they expect.
+		for _, signal := range p.receive.Drain() {
+			fmt.Printf("got a signal after exit: %#v\n", signal)
+
 			switch sig := signal.(type) {
 
 			case monitorSignal:
-				if p.getStatus() != running {
-					sig.monitor.p.send(downSignal{proc: p.self(), ref: sig.ref, reason: exitreason.NoProc})
-					continue
-				}
-				// this is a monitor we took of another process
+				fmt.Printf("handling post-exit monitoringSignal: %#v\n", sig)
 				if sig.monitor.Equals(p.self()) {
 					p.monitoring[sig.ref] = sig.monitored
 				} else {
@@ -128,125 +283,57 @@ func (p *Process) run() {
 					p.monitors = append(p.monitors, pMonitor{pid: sig.monitor, ref: sig.ref})
 				}
 			case demonitorSignal:
-				if sig.origin.Equals(p.self()) {
-					monitoredPid := p.monitoring[sig.ref]
-					sendSignal(monitoredPid, sig)
-					delete(p.monitoring, sig.ref)
-				} else {
-					p.monitors = fun.Filter(p.monitors, func(v pMonitor) bool {
-						return v.ref != sig.ref && v.pid != sig.origin
-					})
-				}
-
+				fmt.Printf("handling post-exit demonitorSignal: %#v\n", sig)
+				p.handleDemonitorSignal(sig)
 			case linkSignal:
-				if p.getStatus() != running {
-					sig.pid.p.send(exitSignal{sender: p.self(), receiver: sig.pid, reason: exitreason.NoProc, link: true})
-					continue
-				}
+				fmt.Printf("handling post-exit linkSignal: %#v\n", sig)
 				if !slices.Contains(p.links, sig.pid) {
 					p.links = append(p.links, sig.pid)
 				}
 			case unlinkSignal:
-				idx := slices.Index(p.links, sig.pid)
-				if idx != -1 {
-					p.links = slices.Delete(p.links, idx, idx+1)
-				} else {
-					Logger.Printf("%v received an unlink signal for %+v, but one could not be found\r", p.self(), sig.pid)
-				}
-
-			// all message signals go to the runnable
-			case messageSignal:
-				if p.getStatus() == running {
-					p.runnableReceive.Enqueue(sig.term)
-				}
-			case downSignal:
-				if p.getStatus() == running {
-
-					_, ok := p.monitoring[sig.ref]
-					if !ok {
-						Logger.Printf("%v, got a DOWN signal but could not match Ref %+v\r", p.self(), sig)
-						break
-					}
-					// convert to an [erl.DownMsg] and send to the Runnable
-					p.runnableReceive.Enqueue(downMsgfromSignal(sig))
-					// for custom message types
-					// this should happen as a result of a linked process existing or someone calling [Exit] on the process.
-				}
-			case exitSignal:
-				if p.getStatus() == running {
-					// can't trap Kill if it's sent to us, but if a linked process exited with reason Kill,
-					// then we can still trap the exit below
-					if errors.Is(sig.reason, exitreason.Kill) && !sig.link {
-						p.exit(sig.reason)
-						return
-					}
-
-					// if we're trapping exits, send the signal to the runnable for them to deal with, don't exit.
-					if p.trapExits() {
-						DebugPrintf("%+v Trapped exit signal from %+v", p.self(), sig.sender)
-						p.runnableReceive.Enqueue(exitMsgFromSignal(sig))
-						DebugPrintf("%v sent exitMsg", p.self())
-					} else {
-						// ignore normal exits from other processes when not trapping exits; [exitreason.Normal] is
-						// a valid way to exit from within a process, but an external process can't generate an
-						// exitsignal with it.
-						if errors.Is(sig.reason, exitreason.Normal) && sig.link && !sig.sender.Equals(p.self()) {
-							continue
-						}
-						p.exit(sig.reason)
-						return
-					}
-				}
+				fmt.Printf("handling post-exit unlinkSignal: %#v \n", sig)
+				p.handleUnlinkSignal(sig)
+			default:
+				// ignore
 			}
-
 		}
-	}
-}
 
-func (p *Process) exit(e error) {
-	// set status to exiting so that our main loop doesn't send signals twice.
-	DebugPrintf("process %v exiting...", p)
-	p.setStatus(exiting)
-	if p.getName() != "" {
-		DebugPrintf("%v unregistering name: %s", p, p.getName())
-		Unregister(p.getName())
+		var exitReason *exitreason.S
+		if e == nil {
+			exitReason = exitreason.Normal
+		}
 
-	}
-	var exitReason *exitreason.S
-	if e == nil {
-		exitReason = exitreason.Normal
-	}
+		if !errors.As(e, &exitReason) {
+			tmpE := exitreason.Exception(e)
+			errors.As(tmpE, &exitReason)
+		}
 
-	if !errors.As(e, &exitReason) {
-		tmpE := exitreason.Exception(e)
-		errors.As(tmpE, &exitReason)
-	}
+		for _, linked := range p.links {
+			linked.p.send(exitSignal{sender: p.self(), receiver: linked, reason: exitReason, link: true})
+		}
+		// notify processes monitoring us that we're down
+		for _, monit := range p.monitors {
+			monit.pid.p.send(downSignal{proc: p.self(), ref: monit.ref, reason: exitReason})
+		}
+		// notify processes we're monitoring that we're not monitoring them anymore
+		// this is important to make sure this process is GC'd
+		for ref, monitPID := range p.monitoring {
+			monitPID.p.send(demonitorSignal{ref: ref, origin: p.self()})
+		}
 
-	for _, linked := range p.links {
-		linked.p.send(exitSignal{sender: p.self(), receiver: linked, reason: exitReason, link: true})
-	}
-	// notify processes monitoring us that we're down
-	for _, monit := range p.monitors {
-		monit.pid.p.send(downSignal{proc: p.self(), ref: monit.ref, reason: exitReason})
-	}
-	// notify processes we're monitoring that we're not monitoring them anymore
-	// this is important to make sure this process is GC'd
-	for ref, monitPID := range p.monitoring {
-		monitPID.p.send(demonitorSignal{ref: ref, origin: p.self()})
-	}
-
-	p.exitReason = exitReason
-	DebugPrintf("%v closing runnableReceive", p)
-	p.runnableReceive.Close()
-	// wait until runnable has exited
-	<-p.done
-	p.setStatus(exited)
-	p.receive.Close()
-	// null out the maps so that we don't hold references that would
-	// prevent garbage collection of finished processes.
-	p.links = nil
-	p.monitors = nil
-	p.monitoring = nil
+		p.exitReason = exitReason
+		DebugPrintf("%v closing runnableReceive", p)
+		p.runnableReceive.Close()
+		// wait until runnable has exited
+		<-p.done
+		p.setStatus(exited)
+		p.receive.Close()
+		// null out the maps so that we don't hold references that would
+		// prevent garbage collection of finished processes.
+		p.links = nil
+		p.monitors = nil
+		p.monitoring = nil
+	})
 }
 
 func (p *Process) self() PID {

@@ -1,5 +1,3 @@
-// Deprecated: use [erl-go/erl/x/erltest instead, which has better msg matchers and logging]
-//
 // this package contains the [TestReceiver] which is a process that
 // can have message expectations set on them. These expectations match
 // messages sent to the process inbox and execute a [TestExpectation] function. The
@@ -7,19 +5,17 @@
 package erltest
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"log/slog"
-	"maps"
 	"os"
 	"reflect"
 	"runtime"
 	"sync"
-	"testing"
 	"time"
 
 	"github.com/rs/xid"
-	"gotest.tools/v3/assert"
 
 	"github.com/uberbrodt/erl-go/chronos"
 	"github.com/uberbrodt/erl-go/erl"
@@ -35,6 +31,22 @@ var (
 	DefaultReceiverTimeout time.Duration = chronos.Dur("9m59s")
 	DefaultWaitTimeout     time.Duration = chronos.Dur("5s")
 )
+
+// Making an interface for [testing.T] so that we can test the TestReceiver
+//
+//go:generate mockgen  -destination ./internal/mock/tlike.go -package mock . TLike
+type TLike interface {
+	Errorf(format string, args ...any)
+	Logf(format string, args ...any)
+	Failed() bool
+	Fatalf(format string, args ...any)
+	Log(args ...any)
+	Helper()
+	FailNow()
+	Deadline() (time.Time, bool)
+	Cleanup(func())
+	Error(args ...any)
+}
 
 type callExpectation struct {
 	e     Expectation
@@ -120,7 +132,7 @@ func SetLogger(logger *slog.Logger) ReceiverOpt {
 
 // Creates a new TestReceiver, which is a process that you can set
 // message matching expectations on.
-func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
+func NewReceiver(t TLike, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 	rOpts := receiverOptions{
 		timeout:     DefaultReceiverTimeout,
 		waitExit:    DefaultReceiverTimeout - time.Second,
@@ -132,13 +144,13 @@ func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 	if tout, ok := t.Deadline(); ok {
 		testExit := time.Until(tout) - time.Second
 		if testExit > DefaultReceiverTimeout {
-			fmt.Printf("-timeout greater than DefaultReceiverTimeout, adjusting: %s", testExit)
+			fmt.Printf("-timeout greater than DefaultReceiverTimeout, adjusting: %s\n", testExit)
 			rOpts.timeout = testExit
 			rOpts.waitExit = testExit - time.Second
 		}
 
 		if testExit < DefaultReceiverTimeout {
-			fmt.Printf("-timeout less than DefaultReceiverTimeout, adjusting: %s", testExit)
+			fmt.Printf("-timeout less than DefaultReceiverTimeout, adjusting: %s\n", testExit)
 			rOpts.timeout = testExit
 			rOpts.waitExit = testExit - time.Second
 		}
@@ -147,16 +159,18 @@ func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 	for _, o := range opts {
 		rOpts = o(rOpts)
 	}
-	expectations := make(map[reflect.Type][]Expectation)
-	castExpects := make(map[reflect.Type][]Expectation)
-	callExpects := make(map[reflect.Type][]callExpectation)
-	allExpects := make(map[string]Expectation)
+
+	expectationSet := NewExpectationSet()
 	testDeps := make([]TestDependency, 0)
 	deps := make([]erl.PID, 0)
+	testf := make([]*ExpectationFailure, 0)
 
 	tr := &TestReceiver{
-		t: t, msgExpects: expectations, castExpects: castExpects, callExpects: callExpects,
-		opts: rOpts, noFail: rOpts.noFail, allExpects: allExpects, testdeps: testDeps, deps: deps,
+		t: t, opts: rOpts, noFail: rOpts.noFail,
+		testdeps:     testDeps,
+		deps:         deps,
+		expectations: expectationSet,
+		_failures:    testf,
 	}
 	if rOpts.logger != nil {
 		tr.log = rOpts.logger
@@ -165,7 +179,7 @@ func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 	}
 	pid := erl.Spawn(tr)
 	tr.setSelf(pid)
-	t.Logf("TestReceiver PID spawned: %+v", pid)
+	t.Logf("%s - [%v] spawned\n", time.Now().Format(time.RFC3339Nano), tr)
 
 	erl.ProcessFlag(pid, erl.TrapExit, true)
 	t.Cleanup(func() {
@@ -176,69 +190,68 @@ func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 }
 
 type TestReceiver struct {
-	t           *testing.T
-	msgExpects  map[reflect.Type][]Expectation
-	castExpects map[reflect.Type][]Expectation
-	callExpects map[reflect.Type][]callExpectation
-	allExpects  map[string]Expectation
-	_failures   []*ExpectationFailure
-	testdeps    []TestDependency
-	deps        []erl.PID
-	msgCnt      int
-	self        erl.PID
+	t  TLike
+	id string
+	// msgExpects map[reflect.Type][]Expectation
+	expectations *expectationSet
+	// allExpects map[string]Expectation
+	_failures []*ExpectationFailure
+	testdeps  []TestDependency
+	deps      []erl.PID
+	msgCnt    int
+	self      erl.PID
 	// if set to true, t.FailNow will not be called in [Pass] or [Wait]
-	noFail     bool
-	mx         sync.RWMutex
-	selfmx     sync.RWMutex
+	noFail bool
+	mx     sync.RWMutex
+	// selfmx     sync.RWMutex
 	failuresMx sync.RWMutex
 	// TODO: rename to waitExpired
 	waitExpired bool
 	opts        receiverOptions
 	exiting     bool
 	log         *slog.Logger
+	openSig     chan struct{}
 }
 
 func (tr *TestReceiver) getExiting() bool {
-	defer tr.selfmx.RUnlock()
-	tr.selfmx.RLock()
+	defer tr.mx.RUnlock()
+	tr.mx.RLock()
 	return tr.exiting
 }
 
 func (tr *TestReceiver) setExiting(status bool) {
-	defer tr.selfmx.Unlock()
-	tr.selfmx.Lock()
+	defer tr.mx.Unlock()
+	tr.mx.Lock()
 	tr.exiting = status
 }
 
-// TODO: rename to getWaitExpired
 func (tr *TestReceiver) getWaitExpired() bool {
-	defer tr.selfmx.RUnlock()
-	tr.selfmx.RLock()
+	defer tr.mx.RUnlock()
+	tr.mx.RLock()
 	return tr.waitExpired
 }
 
-// TODO: rename to setWaitExpired
 func (tr *TestReceiver) setWaitExpired(status bool) {
-	defer tr.selfmx.Unlock()
-	tr.selfmx.Lock()
+	defer tr.mx.Unlock()
+	tr.mx.Lock()
 	tr.waitExpired = status
 }
 
 func (tr *TestReceiver) getSelf() erl.PID {
-	defer tr.selfmx.RUnlock()
-	tr.selfmx.RLock()
+	defer tr.mx.RUnlock()
+	tr.mx.RLock()
 	return tr.self
 }
 
 func (tr *TestReceiver) Self() erl.PID {
-	defer tr.selfmx.RUnlock()
-	tr.selfmx.RLock()
+	defer tr.mx.RUnlock()
+	tr.mx.RLock()
 	return tr.self
 }
 
 func (tr *TestReceiver) setSelf(pid erl.PID) {
-	defer tr.selfmx.Unlock()
-	tr.selfmx.Lock()
+	defer tr.mx.Unlock()
+	tr.mx.Lock()
 	tr.self = pid
 }
 
@@ -269,7 +282,7 @@ func (tr *TestReceiver) Receive(self erl.PID, inbox <-chan any) error {
 					return exitreason.Normal
 				}
 			}
-			tr.safeTLogf("message received", "msg", msg)
+			// tr.safeTLogf("message received", "msg", msg)
 
 			tr.mx.Lock()
 			tr.check(msg)
@@ -278,7 +291,7 @@ func (tr *TestReceiver) Receive(self erl.PID, inbox <-chan any) error {
 			tr.safeTError("receive timeout")
 			// end test and call finish to print the expectations that didn't pass
 			tr.setWaitExpired(true)
-			tr.finish()
+			tr.timeout()
 
 			return exitreason.Timeout
 		}
@@ -288,115 +301,79 @@ func (tr *TestReceiver) Receive(self erl.PID, inbox <-chan any) error {
 func (tr *TestReceiver) check(msg any) {
 	tr.msgCnt = tr.msgCnt + 1
 
+	var match *Expectation
+	var err error
+	var callReq *genserver.CallRequest
 	switch v := msg.(type) {
 	case genserver.CastRequest:
-		castMsgT := reflect.TypeOf(v.Msg)
-		for match, exSlice := range tr.castExpects {
-			if castMsgT == match {
-				if len(exSlice) > 0 {
-					var ex Expectation
-					if exSlice[0].Satisfied(tr.getWaitExpired()) && len(exSlice) > 1 {
-						ex = exSlice[1]
-						tr.castExpects[match] = exSlice[1:]
-					} else {
-						ex = exSlice[0]
-					}
-					// pass in the unwrapped message
-					fail := tr.checkMatch(match, v.Msg, nil, ex)
-					if fail != nil {
-						tr.appendFailure(fail)
-					}
-				}
-			}
+		match, err = tr.expectations.FindMatch(v.Msg)
+		if err != nil {
+			e := fmt.Errorf("expectation failed: %v", err)
+			tr.appendFailure(&ExpectationFailure{Match: v, Exp: match, Msg: v.Msg, Reason: e})
+			tr.t.Error(e)
+
+			return
 		}
+
 	case genserver.CallRequest:
-		callMsgT := reflect.TypeOf(v.Msg)
-		for match, exSlice := range tr.callExpects {
-			if callMsgT == match {
-				if len(exSlice) > 0 {
-					var ex callExpectation
-					if exSlice[0].e.Satisfied(tr.getWaitExpired()) && len(exSlice) > 1 {
-						ex = exSlice[1]
-						tr.callExpects[match] = exSlice[1:]
-					} else {
-						ex = exSlice[0]
-					}
-
-					fail := tr.checkMatch(match, v.Msg, &v.From, ex.e)
-					// XXX: should we be replying if the expectation fails? I think
-					// yes, because this will likely cause the test to fail faster instead of
-					// genserver.Call or the whole test timing out
-					if ex.reply != NoCallReply {
-						genserver.Reply(v.From, ex.reply)
-					}
-					if fail != nil {
-						tr.appendFailure(fail)
-					}
-				}
-			}
+		callReq = &v
+		match, err = tr.expectations.FindMatch(v.Msg)
+		if err != nil {
+			tr.t.Errorf("expectation failed: %v", err)
+			return
 		}
+
 	default:
-		msgT := reflect.TypeOf(msg)
-		for match, exSlice := range tr.msgExpects {
-			if msgT == match {
-				if len(exSlice) > 0 {
-					var ex Expectation
-					// if the current head is satisifed, then we pop it off
-					// and put the next expectation in pole position
-					if exSlice[0].Satisfied(tr.getWaitExpired()) && len(exSlice) > 1 {
-						ex = exSlice[1]
-						tr.msgExpects[match] = exSlice[1:]
-					} else {
-						ex = exSlice[0]
-					}
-					fail := tr.checkMatch(match, msg, nil, ex)
-					if fail != nil {
-						tr.appendFailure(fail)
-					}
-				}
-			}
+		match, err = tr.expectations.FindMatch(v)
+		if err != nil {
+			e := fmt.Errorf("expectation failed: %v", err)
+			tr.appendFailure(&ExpectationFailure{Match: v, Exp: match, Msg: v, Reason: e})
+			tr.t.Error(e)
+			return
 		}
 
 	}
-}
 
-func (tr *TestReceiver) checkMatch(match reflect.Type, msg any, from *genserver.From, ex Expectation) (failure *ExpectationFailure) {
-	arg := ExpectArg{Match: match, Exp: ex, Msg: msg, Self: tr.getSelf(), MsgCount: tr.msgCnt, From: from}
-	if nextEx, fail := ex.Check(arg); fail != nil {
-		return fail
-	} else if nextEx != nil {
-		return tr.checkMatch(match, msg, from, nextEx)
+	if match == nil {
+		return
+	}
+	// increments the counter and returns an action we should perform
+	do := match.call()
+
+	if callReq != nil {
+		if match.reply != NoCallReply {
+			genserver.Reply(callReq.From, match.reply)
+		}
+		if do != nil {
+			do(ExpectArg{Msg: msg, From: &callReq.From, Self: tr.self, Exp: match})
+		}
 	} else {
-		return nil
+		if do != nil {
+			do(ExpectArg{Msg: msg, Self: tr.self, Exp: match})
+		}
+	}
+
+	// Two things happen here:
+	// * the matching call no longer needs to check prerequisite calls,
+	// * and the prerequisite calls are no longer expected, so remove them.
+	preReqCalls := match.dropPrereqs()
+	for _, preReqCall := range preReqCalls {
+		tr.expectations.Remove(preReqCall)
+	}
+
+	if match.exhausted() {
+		tr.expectations.Remove(match)
 	}
 }
-
-// Register an expectation with this TestReciever. It will be checked
-// when Pass is called (and as a consequnce, cause [Wait] to block until its success)
-func (tr *TestReceiver) WaitOn(e ...Expectation) {
-	for _, ex := range e {
-		tr.allExpects[ex.ID()] = ex
-	}
-}
-
-// TODO: implement
-// func (tr *TestReceiver) Join(pid erl.PID, td TestDependency) {
-// 	// if the pid is not nil, we should link to this process so that it will exit when
-// 	// this test receiver exits.
-// 	if !pid.IsNil() {
-// 		erl.Link(tr.getSelf(), pid)
-// 	}
-//
-// 	tr.testdeps = append(tr.testdeps, td)
-// }
 
 // starts the process via [startLink] with the TestReceiver as the parent. If [startLink] returns
 // an error the test is failed. The process will be synchronously killed when calling [Stop]
 func (tr *TestReceiver) StartSupervised(startLink func(self erl.PID) (erl.PID, error)) erl.PID {
 	tr.t.Helper()
 	pid, err := startLink(tr.getSelf())
-
-	assert.NilError(tr.t, err)
+	if err != nil {
+		tr.t.Fatalf("failed starting supervised process: %v", err)
+	}
 
 	tr.deps = append(tr.deps, pid)
 
@@ -404,39 +381,17 @@ func (tr *TestReceiver) StartSupervised(startLink func(self erl.PID) (erl.PID, e
 }
 
 // Set an expectation that will be matched whenever a [matchTerm] msg type is received.
-func (tr *TestReceiver) Expect(matchTerm any, e Expectation) {
-	t := reflect.TypeOf(matchTerm)
-	tr.allExpects[e.ID()] = e
-	if exSlice, ok := tr.msgExpects[t]; ok {
-		tr.msgExpects[t] = append(exSlice, e)
-	} else {
-		tr.msgExpects[t] = []Expectation{e}
-	}
+func (tr *TestReceiver) Expect(matchTerm any, m Matcher) *Expectation {
+	e := newExpect(tr.t, m, reflect.TypeOf(matchTerm))
+	tr.expectations.Add(e)
+	return e
 }
 
 // This is like [Expect] but is only tested against [genserver.CastRequest] messages.
-func (tr *TestReceiver) ExpectCast(matchTerm any, e Expectation) {
-	t := reflect.TypeOf(matchTerm)
-	tr.allExpects[e.ID()] = e
-	if exSlice, ok := tr.castExpects[t]; ok {
-		tr.castExpects[t] = append(exSlice, e)
-	} else {
-		tr.castExpects[t] = []Expectation{e}
-	}
-}
-
-// Deprecated: use [ExpectCallReply] instead
-// This is like [Expect] but is only tested against [genserver.CallRequest] messages.
-// NOTE: You should use [genserver.Reply] to send a response to the [genserver.From], otherwise
-// the caller will timeout
-func (tr *TestReceiver) ExpectCall(matchTerm any, e Expectation) {
-	t := reflect.TypeOf(matchTerm)
-	tr.allExpects[e.ID()] = e
-	if exSlice, ok := tr.callExpects[t]; ok {
-		tr.callExpects[t] = append(exSlice, callExpectation{e: e, reply: NoCallReply})
-	} else {
-		tr.callExpects[t] = []callExpectation{{e: e, reply: NoCallReply}}
-	}
+func (tr *TestReceiver) ExpectCast(matchTerm any, m Matcher) *Expectation {
+	e := newExpect(tr.t, m, reflect.TypeOf(matchTerm))
+	tr.expectations.Add(e)
+	return e
 }
 
 // Sets an expectation about a [genserver.Call] for this TestReceiver. The [reply]
@@ -444,133 +399,139 @@ func (tr *TestReceiver) ExpectCall(matchTerm any, e Expectation) {
 //
 // If you want to *not* send a reply (say you're testing Call timeouts), then set [reply]
 // to the signal value [NoCallReply].
-func (tr *TestReceiver) ExpectCallReply(matchTerm any, e Expectation, reply any) {
-	t := reflect.TypeOf(matchTerm)
-	tr.allExpects[e.ID()] = e
-	if exSlice, ok := tr.callExpects[t]; ok {
-		tr.callExpects[t] = append(exSlice, callExpectation{e: e, reply: reply})
-	} else {
-		tr.callExpects[t] = []callExpectation{{e: e, reply: reply}}
-	}
+func (tr *TestReceiver) ExpectCall(matchTerm any, m Matcher, reply any) *Expectation {
+	e := newExpect(tr.t, m, reflect.TypeOf(matchTerm))
+	e.reply = reply
+	tr.expectations.Add(e)
+	return e
 }
 
-// returns the number of failed expectations and whether
-// all expectations have been satisifed. An expectation is
-// not satisfied unless it is invoked in the correct time and order
-func (tr *TestReceiver) Pass() (int, bool) {
-	tr.mx.RLock()
-	defer tr.mx.RUnlock()
-	expects := maps.Values(tr.allExpects)
-	pass := true
-	for v := range expects {
-
-		if !pass {
-			continue
-		}
-
-		pass = v.Satisfied(tr.getWaitExpired())
-	}
-
-	return len(tr.Failures()), pass
+func (tr *TestReceiver) timeout() {
+	tr.t.Errorf("%s - [%v] timed out waiting for expectation to be fulfilled\n", time.Now().Format(time.RFC3339Nano), tr)
+	tr.printUnsatisifed()
+	tr.printUnmatchedMsgs()
 }
 
-func (tr *TestReceiver) finish() (done bool, failed bool) {
-	fails, passed := tr.Pass()
-	if fails > 0 {
-		tr.mx.Lock()
-		defer tr.mx.Unlock()
-		tr.safeTLogf("expectation failures", "count", fails)
-		for i, f := range tr.Failures() {
-			tr.safeTLogf("expectation failure", "failure_cnt",
-				i, "name", f.Exp.Name(),
-				"reason", f.Reason,
-				"match", f.Match,
-				"msg", f.Msg)
-		}
-		if !tr.noFail {
-			tr.t.Fail()
-		} else {
-			return false, true
-		}
+func (tr *TestReceiver) printUnmatchedMsgs() {
+	buf := new(bytes.Buffer)
+	fmt.Fprintln(buf, "UNMATCHED MSGS: [")
+	for _, missed := range tr.expectations.misses {
+		fmt.Fprintf(buf, "%+v\n", missed.msg)
 	}
+	fmt.Fprintln(buf, "]")
 
-	if !passed && !tr.noFail && fails == 0 {
-		tr.t.Errorf("An expectation was un-satisifed, but did not report a failure message. This is probably an atLeast expectation that did not meet the minimum invocations. In the future, these will be reported like other expectation failures.")
-	}
-
-	return passed, false
+	tr.t.Log(buf)
 }
 
-// Returns when the [WaitTimeout] expires or an expectation fails. If at the end of the timeout not
-// all expectations are satisifed, the test is failed. Call this after you have sent your messages
-// and want fail if your expecations don't pass
+func (tr *TestReceiver) printUnsatisifed() {
+	buf := new(bytes.Buffer)
+	exs1 := tr.expectations.Unsatisifed()
+
+	fmt.Fprintln(buf, "UNSATISIFED EXPECTATIONS:[")
+	for msgT, casts := range exs1 {
+		fmt.Fprintf(buf, "%v\n", msgT)
+		for _, c := range casts {
+			tr.appendFailure(&ExpectationFailure{Exp: c, Match: msgT, Reason: fmt.Errorf("unsatisifed expectation: %v", c)})
+			fmt.Fprintf(buf, "%v\n", c)
+		}
+	}
+	fmt.Fprintln(buf, "]")
+
+	tr.t.Log(buf)
+}
+
+// Returns when the [ReceiverTimeout] expires or an expectation fails.
+// It will not return *before* the [WaitTimeout]; this gives us a minimum amount of time for
+// expectations to match messages.
+//
+// Call this after you have sent your messages
 func (tr *TestReceiver) Wait() {
 	now := time.Now()
+	tr.t.Logf("%s - [%v]] waiting for expectations to be fulfilled", now.Format(time.RFC3339Nano), tr)
+
+	if tr.expectations.howMany() == 0 {
+		tr.t.Logf("%s - [%v] no expectations, returning from Wait()", time.Now().Format(time.RFC3339Nano), tr)
+		return
+	}
 	// we use a local variable here so we don't increase lock contentention calling
 	// tr.setTestEnded every iteration
-	var testEnded bool
-	for {
+	if tr.t.Failed() {
+		tr.t.Logf("%s - [%v] test failed, returning from Wait()", time.Now().Format(time.RFC3339Nano), tr)
+		return
+		tr.printUnsatisifed()
+		tr.printUnmatchedMsgs()
+		return
+	}
 
-		if time.Since(now) > tr.opts.waitExit {
-			tr.log.Info("test timed out waiting for expectations to be fulfilled")
-			tr.finish()
-			return
-		}
-
-		if time.Since(now) > tr.opts.waitTimeout {
-			if !testEnded {
-				tr.setWaitExpired(true)
-				testEnded = true
-			}
-			_, passed := tr.Pass()
-			if passed {
-				tr.finish()
+	if tr.expectations.MustWait() {
+		for {
+			// if the test has failed, exit
+			if tr.t.Failed() {
+				tr.t.Logf("%s - [%v] test failed, returning from Wait()", time.Now().Format(time.RFC3339Nano), tr)
+				tr.printUnsatisifed()
+				tr.printUnmatchedMsgs()
 				return
 			}
-			continue
+			if time.Since(now) >= tr.opts.waitTimeout {
+				tr.t.Logf("%s - [%v] wait timeout expired", time.Now().Format(time.RFC3339Nano), tr)
+				break
+			}
+			runtime.Gosched()
+			time.Sleep(10 * time.Millisecond)
 		}
+	}
 
-		failures, passed := tr.Pass()
-		//  all passed, return so test ends
-		if passed {
-			tr.finish()
+	for {
+		if time.Since(now) > tr.opts.waitExit {
+			tr.t.Logf("%s - [%v] test timed out in Wait()\n", time.Now().Format(time.RFC3339Nano), tr)
+			tr.timeout()
 			return
 		}
 
-		// we had a failure before the waitTimeout, so exit
-		if failures > 0 {
-			tr.finish()
+		if tr.t.Failed() {
+			tr.t.Logf("%s - [%v] test failed, returning from Wait()\n", time.Now().Format(time.RFC3339Nano), tr)
+			tr.printUnsatisifed()
+			tr.printUnmatchedMsgs()
 			return
 		}
+
+		if tr.expectations.IsSatisifed() {
+			tr.t.Logf("%s - [%v] expectations all satisfied, returning from Wait()\n", time.Now().Format(time.RFC3339Nano), tr)
+			return
+		}
+
 		runtime.Gosched()
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
 // will cause the test receiver to exit, sending signals to linked and monitoring
 // processes. This is not needed for normal test cleanup (that is handled via [t.Cleanup()])
 func (tr *TestReceiver) Stop() {
-	// first, stop dependencies
+	tr.t.Logf("%s - [%v] stopping...\n", time.Now().Format(time.RFC3339Nano), tr)
 	if !erl.IsAlive(tr.getSelf()) {
+		tr.t.Logf("%s - [%v] testreceiver dead, returning from Stop()\n", time.Now().Format(time.RFC3339Nano), tr)
 		return
 	}
 
 	var depWG sync.WaitGroup
+	// first, stop dependencies
 	if len(tr.deps) > 0 {
 		depWG.Add(len(tr.deps))
 
 		for _, dep := range tr.deps {
 			_, err := exitwaiter.New(tr.t, tr.getSelf(), dep, &depWG)
 			if err != nil {
-				tr.t.Errorf("FAILURE: testreceiver %s could not start exitwaiter for dep %+v: %+v", tr.getSelf(), dep, err)
+				tr.t.Errorf("FAILURE: testreceiver %s could not start exitwaiter for dep %+v: %+v\n", tr.getSelf(), dep, err)
 				return
 			}
 			erl.Exit(tr.opts.parent, dep, exitreason.Kill)
 
 		}
 
-		tr.t.Logf("test receiver %+v waiting for deps to stop", tr.getSelf())
+		tr.t.Logf("%s - [%v] waiting for deps to stop\n", time.Now().Format(time.RFC3339Nano), tr)
 		depWG.Wait()
-		tr.t.Logf("test receiver %+v deps stopped", tr.getSelf())
+		tr.t.Logf("%s - [%v] deps stopped\n", time.Now().Format(time.RFC3339Nano), tr)
 	}
 
 	if !erl.IsAlive(tr.getSelf()) {
@@ -580,12 +541,13 @@ func (tr *TestReceiver) Stop() {
 	wg.Add(1)
 	_, err := exitwaiter.New(tr.t, tr.opts.parent, tr.getSelf(), &wg)
 	if err != nil {
-		tr.t.Errorf("FAILURE starting exitwaiter for test process: %+v", err)
+		tr.t.Errorf("FAILURE starting exitwaiter for test process: %+v\n", err)
 		return
 	}
 	erl.Exit(tr.opts.parent, tr.getSelf(), exitreason.TestExit)
+	tr.t.Logf("%s - [%v] waiting for exit\n", time.Now().Format(time.RFC3339Nano), tr)
 	wg.Wait()
-	tr.t.Logf("test receiver has stopped: %s ", tr.getSelf())
+	tr.t.Logf("test receiver has stopped: %s\n", tr.getSelf())
 }
 
 func (tr *TestReceiver) Failures() []*ExpectationFailure {
@@ -604,8 +566,6 @@ func (tr *TestReceiver) appendFailure(f *ExpectationFailure) {
 	tr._failures = append(tr._failures, f)
 }
 
-// return the [*testing.T]. Don't use this in situations that could run after a
-// test is failed, the race detector doesn't like that.
-func (tr *TestReceiver) T() *testing.T {
-	return tr.t
+func (tr *TestReceiver) String() string {
+	return fmt.Sprintf("TestReceiver[%v]", tr.getSelf())
 }

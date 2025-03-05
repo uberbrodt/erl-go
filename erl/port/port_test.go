@@ -10,16 +10,19 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/mock/gomock"
 	"gotest.tools/v3/assert"
+
+	"github.com/budougumi0617/cmpmock"
+	"github.com/google/go-cmp/cmp"
 
 	"github.com/uberbrodt/erl-go/chronos"
 	"github.com/uberbrodt/erl-go/erl"
-	"github.com/uberbrodt/erl-go/erl/erltest"
-	"github.com/uberbrodt/erl-go/erl/erltest/expect"
-	"github.com/uberbrodt/erl-go/erl/erltest/testcase"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
 	. "github.com/uberbrodt/erl-go/erl/port"
 	"github.com/uberbrodt/erl-go/erl/projectpath"
+	"github.com/uberbrodt/erl-go/erl/x/erltest"
+	"github.com/uberbrodt/erl-go/erl/x/erltest/testcase"
 )
 
 func TestOpen_WritesToStdOutBuffer(t *testing.T) {
@@ -298,26 +301,24 @@ func TestOpts_SetExitSignal(t *testing.T) {
 
 	exe := projectpath.Join("erl/port/testdata/fail_after_time.sh")
 
-	tc.Arrange(func(self erl.PID) {
-		tc.Receiver().Expect(Message{}, expect.Expect(func(arg erltest.ExpectArg) bool {
-			msg := arg.Msg.(Message)
-			if strings.Contains(string(msg.Data), "started") {
-				gotIntroMsg = true
-				Close(self, port)
-				return true
-			}
-			if strings.Contains(string(msg.Data), "SIGINT") {
-				gotSigMsg = true
-				return true
-			}
+	msgMatcher := func(v1 Message, v2 Message) bool {
+		return bytes.Contains(v1.Data, v2.Data) || bytes.Contains(v2.Data, v1.Data)
+	}
 
-			if strings.Contains(string(msg.Data), "loop") {
-				gotSigMsg = true
-				return true
-			}
-			return false
-		}, expect.AtLeast(2)))
-		tc.Receiver().Expect(Exited{}, expect.Called(expect.Times(1)))
+	tc.Arrange(func(self erl.PID) {
+		tc.Receiver().Expect(Message{}, cmpmock.DiffEq(Message{Data: []byte("started")}, cmp.Comparer(msgMatcher))).Do(func(ea erltest.ExpectArg) {
+			gotIntroMsg = true
+			Close(self, port)
+		}).Times(1)
+		tc.Receiver().Expect(Message{}, cmpmock.DiffEq(Message{Data: []byte("SIGINT")}, cmp.Comparer(msgMatcher))).Do(func(ea erltest.ExpectArg) {
+			gotSigMsg = true
+		}).Times(1)
+		tc.Receiver().Expect(Message{}, cmpmock.DiffEq(Message{Data: []byte("loop")}, cmp.Comparer(msgMatcher))).Do(func(ea erltest.ExpectArg) {
+			gotSigMsg = true
+		}).Times(1)
+		tc.Receiver().Expect(Exited{}, gomock.Any()).Times(1)
+		tc.Receiver().Expect(erl.ExitMsg{}, gomock.Any()).Times(1)
+		tc.Receiver().Expect(Closed{}, gomock.Any()).Times(1)
 	})
 
 	tc.Act(func() {
@@ -336,8 +337,10 @@ func TestOpts_ReceiveStderr_GetPortErrMessages(t *testing.T) {
 	tc := testcase.New(t, erltest.WaitTimeout(5*time.Second))
 
 	tc.Arrange(func(self erl.PID) {
-		tc.Receiver().Expect(ErrMessage{}, expect.Called(expect.Times(4)))
-		tc.Receiver().Expect(Exited{}, expect.Called(expect.Times(1)))
+		tc.Receiver().Expect(Message{}, gomock.Any()).Times(1)
+		tc.Receiver().Expect(erl.ExitMsg{}, gomock.Any()).Times(1)
+		tc.Receiver().Expect(ErrMessage{}, gomock.Any()).Times(4)
+		tc.Receiver().Expect(Exited{}, gomock.Any()).Times(1)
 	})
 
 	tc.Act(func() {

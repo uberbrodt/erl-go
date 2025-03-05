@@ -7,7 +7,6 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
-	"testing"
 
 	"github.com/uberbrodt/erl-go/erl"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
@@ -26,9 +25,15 @@ type westate struct {
 	ref  erl.Ref
 }
 
+// a testing.T
+type TestT interface {
+	FailNow()
+	Logf(format string, args ...any)
+}
+
 // Starts a new ExitWaiter. The returned channel will be closed when the exit
 // signal is received from [waitingOn]
-func New(t *testing.T, self erl.PID, waitingOn erl.PID, wg *sync.WaitGroup) (erl.PID, error) {
+func New(t TestT, self erl.PID, waitingOn erl.PID, wg *sync.WaitGroup) (erl.PID, error) {
 	pid, err := Start(self, weConfig{wg: wg, waitinOn: waitingOn})
 	if err != nil {
 		t.Logf("could not start exitWaiter: %v", err)
@@ -52,7 +57,9 @@ func initSrv(self erl.PID, args any) (westate, any, error) {
 
 	erl.ProcessFlag(self, erl.TrapExit, true)
 
+	slog.Info("initalizing exit waiter")
 	ref := erl.Monitor(self, conf.waitinOn)
+	slog.Info("monitor taken", "ref", ref)
 
 	if !ok {
 		return westate{}, nil, exitreason.Exception(errors.New("init arg must be a weConfig{}"))
@@ -62,9 +69,13 @@ func initSrv(self erl.PID, args any) (westate, any, error) {
 
 func handleDownMsg(self erl.PID, msg erl.DownMsg, state westate) (westate, any, error) {
 	if msg.Proc.Equals(state.conf.waitinOn) && msg.Ref == state.ref {
-		slog.Info("waitExit caught DownMsg, closing signal channel", "msg", msg)
+		slog.Info("exitwaiter caught DownMsg, closing signal channel", "msg", msg)
 		state.conf.wg.Done()
 		return state, nil, exitreason.Normal
+	} else {
+		slog.Warn("exitwaiter caught DownMsg, but ref or proc did not match",
+			"expected_ref", state.ref, "expected_proc", state.conf.waitinOn,
+			"received_down_msg", msg)
 	}
 	return state, nil, nil
 }
