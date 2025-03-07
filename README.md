@@ -1,5 +1,5 @@
 # erl-go
-[![GoDoc](https://pkg.go.dev/github.com/uberbrodt/erl-go?status.svg)](https://pkg.go.dev/github.com/uberbrodt/erl-go)
+[![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg)](https://pkg.go.dev/github.com/uberbrodt/erl-go)
 
 
 An Erlang like Actor System for Go
