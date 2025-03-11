@@ -45,8 +45,8 @@ func (eo *ExpectOpts) GetExType() ExType {
 
 // get the name of the expectation.
 // This is a transitional method to help porting from this package to `x/erltest`
-func (eo *ExpectOpts) GetName(n int) ExType {
-	return eo.exType
+func (eo *ExpectOpts) GetName(n int) string {
+	return eo.name
 }
 
 // Expectation is satisifed only if it is invoked [n] times.
