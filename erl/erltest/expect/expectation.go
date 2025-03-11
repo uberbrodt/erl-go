@@ -8,7 +8,7 @@ import (
 
 type Expectation struct {
 	h         Handle
-	opts      expectOpts
+	opts      ExpectOpts
 	matchCnt  int
 	satisfied bool
 	id        string

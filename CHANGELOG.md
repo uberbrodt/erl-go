@@ -1,14 +1,19 @@
 # Changelog
 
-## UNRELEASED
+## 0.19.1 2025-3-11
 
 ### Added
 - Added a `WaitOn` method to `x/erltest/testcase` that will add a dependency
 whose `Wait()` method will be called in parallel with all other "Waitables" when
 `testcase.Case.Assert()` is called.
+- Added `ParseOpts` to `erl/erltest/expect` to help transition users to
+`x/erltest`
 
 ### Changed
 - Return the exitreason from GenCaller, not the whole exitmsg.
+- Make `erl/erltest/expect.ExpectOpts` public, along with some methods to get
+  Times and ExType. This is to enable consumers to transition to `x/erltest`
+  without fully re-writing their tests.
 
 
 ## 0.19.0 2025-3-5

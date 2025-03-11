@@ -2,24 +2,52 @@ package expect
 
 import "github.com/uberbrodt/erl-go/erl/erltest"
 
-type expectOpts struct {
+type ExpectOpts struct {
 	times  int
-	exType exType
+	exType ExType
 	tr     *erltest.TestReceiver
 	name   string
 }
 
-type exType string
+type ExType string
 
 const (
-	exact    exType = "EXACT"
-	atMost   exType = "AT_MOST"
-	atLeast  exType = "AT_LEAST"
-	absolute exType = "ABSOLUTE"
-	anyTimes exType = "ANY_TIMES"
+	exact    ExType = "EXACT"
+	atMost   ExType = "AT_MOST"
+	atLeast  ExType = "AT_LEAST"
+	absolute ExType = "ABSOLUTE"
+	anyTimes ExType = "ANY_TIMES"
 )
 
-type ExpectOpt func(o expectOpts) expectOpts
+// This is a transitional method to help porting from this package to `x/erltest`
+func ParseOpts(opts ...ExpectOpt) ExpectOpts {
+	o := ExpectOpts{times: 1, exType: atLeast}
+
+	for _, f := range opts {
+		o = f(o)
+	}
+	return o
+}
+
+type ExpectOpt func(o ExpectOpts) ExpectOpts
+
+// get the number of times the expectation should match
+// This is a transitional method to help porting from this package to `x/erltest`
+func (eo *ExpectOpts) GetTimes(n int) int {
+	return eo.times
+}
+
+// get the type of expectation.
+// This is a transitional method to help porting from this package to `x/erltest`
+func (eo *ExpectOpts) GetExType(n int) ExType {
+	return eo.exType
+}
+
+// get the name of the expectation.
+// This is a transitional method to help porting from this package to `x/erltest`
+func (eo *ExpectOpts) GetName(n int) ExType {
+	return eo.exType
+}
 
 // Expectation is satisifed only if it is invoked [n] times.
 //
@@ -28,7 +56,7 @@ type ExpectOpt func(o expectOpts) expectOpts
 // expectations for the same msg, no subsequent expectations can match until after
 // the wait timeout.
 func Times(n int) ExpectOpt {
-	return func(o expectOpts) expectOpts {
+	return func(o ExpectOpts) ExpectOpts {
 		o.times = n
 		o.exType = exact
 		return o
@@ -42,7 +70,7 @@ func Times(n int) ExpectOpt {
 // expectations for the same msg, no subsequent expectations can match until after
 // the wait timeout.
 func AtMost(n int) ExpectOpt {
-	return func(o expectOpts) expectOpts {
+	return func(o ExpectOpts) ExpectOpts {
 		o.times = n
 		o.exType = atMost
 		return o
@@ -53,7 +81,7 @@ func AtMost(n int) ExpectOpt {
 // Ensure that you are sleeping the test or have other expectations so [TestReciever.Wait]
 // does not exit immediately
 func AnyTimes() ExpectOpt {
-	return func(o expectOpts) expectOpts {
+	return func(o ExpectOpts) ExpectOpts {
 		o.exType = anyTimes
 		return o
 	}
@@ -61,7 +89,7 @@ func AnyTimes() ExpectOpt {
 
 // specify that an expectation should match the Nth msg received by the TestReceiver
 func Absolute(nthMsg int) ExpectOpt {
-	return func(o expectOpts) expectOpts {
+	return func(o ExpectOpts) ExpectOpts {
 		o.exType = absolute
 		o.times = nthMsg
 
@@ -71,7 +99,7 @@ func Absolute(nthMsg int) ExpectOpt {
 
 // expectation will pass only if matched >=[n] times.
 func AtLeast(n int) ExpectOpt {
-	return func(o expectOpts) expectOpts {
+	return func(o ExpectOpts) ExpectOpts {
 		o.exType = atLeast
 		o.times = n
 
@@ -86,7 +114,7 @@ func AtLeast(n int) ExpectOpt {
 // expectations for the same msg, no subsequent expectations can match until after
 // the wait timeout.
 func Never() ExpectOpt {
-	return func(o expectOpts) expectOpts {
+	return func(o ExpectOpts) ExpectOpts {
 		o.exType = exact
 		o.times = 0
 
@@ -97,7 +125,7 @@ func Never() ExpectOpt {
 // Set the TestReceiver that the expectation will add itself to.
 // Useful when you are registering [Simple] sub-expectations
 func Receiver(tr *erltest.TestReceiver) ExpectOpt {
-	return func(o expectOpts) expectOpts {
+	return func(o ExpectOpts) ExpectOpts {
 		o.tr = tr
 		return o
 	}
@@ -105,7 +133,7 @@ func Receiver(tr *erltest.TestReceiver) ExpectOpt {
 
 // Set a name that will identify the Expectation in error reports and logs
 func Name(name string) ExpectOpt {
-	return func(o expectOpts) expectOpts {
+	return func(o ExpectOpts) ExpectOpts {
 		o.name = name
 		return o
 	}

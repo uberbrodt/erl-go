@@ -18,7 +18,7 @@ type Handle func(erltest.ExpectArg) (erltest.Expectation, *erltest.ExpectationFa
 // returned here, they all need to be attached to make sure the [TestReceiver] does
 // not pass without checking them.
 func New(te Handle, opts ...ExpectOpt) *Expectation {
-	o := expectOpts{times: 1, exType: atLeast}
+	o := ExpectOpts{times: 1, exType: atLeast}
 
 	for _, f := range opts {
 		o = f(o)
@@ -27,7 +27,7 @@ func New(te Handle, opts ...ExpectOpt) *Expectation {
 	return new(te, o)
 }
 
-func new(te Handle, opts expectOpts) *Expectation {
+func new(te Handle, opts ExpectOpts) *Expectation {
 	ex := &Expectation{
 		id:        xid.New().String(),
 		h:         te,
