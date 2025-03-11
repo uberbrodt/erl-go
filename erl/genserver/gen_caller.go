@@ -53,9 +53,9 @@ func (gc *genCaller) handleMsg(self erl.PID, anymsg any) error {
 		if msg.Ref == gc.gsRef {
 			log.Printf("genCaller got DOWN msg from genserver: %+v", msg)
 			if exitreason.IsNormal(msg.Reason) || exitreason.IsShutdown(msg.Reason) {
-				gc.out <- CallReply{Status: Stopped, Term: msg}
+				gc.out <- CallReply{Status: Stopped, Term: msg.Reason}
 			} else {
-				gc.out <- CallReply{Status: Other, Term: msg}
+				gc.out <- CallReply{Status: Other, Term: msg.Reason}
 			}
 			return exitreason.Normal
 		} else {

@@ -1,5 +1,11 @@
 # Changelog
 
+## UNRELEASED
+
+
+### Changed
+- Return the exitreason from GenCaller, not the whole exitmsg.
+
 
 ## 0.19.0 2025-3-5
 
