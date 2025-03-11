@@ -33,13 +33,13 @@ type ExpectOpt func(o ExpectOpts) ExpectOpts
 
 // get the number of times the expectation should match
 // This is a transitional method to help porting from this package to `x/erltest`
-func (eo *ExpectOpts) GetTimes(n int) int {
+func (eo *ExpectOpts) GetTimes() int {
 	return eo.times
 }
 
 // get the type of expectation.
 // This is a transitional method to help porting from this package to `x/erltest`
-func (eo *ExpectOpts) GetExType(n int) ExType {
+func (eo *ExpectOpts) GetExType() ExType {
 	return eo.exType
 }
 
