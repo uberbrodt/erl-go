@@ -19,6 +19,7 @@ import (
 
 	"github.com/uberbrodt/erl-go/chronos"
 	"github.com/uberbrodt/erl-go/erl"
+	"github.com/uberbrodt/erl-go/erl/erltest"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
 	"github.com/uberbrodt/erl-go/erl/exitwaiter"
 	"github.com/uberbrodt/erl-go/erl/genserver"
@@ -69,6 +70,23 @@ type receiverOptions struct {
 	name        string
 	logger      *slog.Logger
 	parent      erl.PID
+}
+
+// Create [receiverOptions] from the deprecated [erltest] package
+// this is a transitional method and will be removed when this becomes
+// the standard testing package.
+func OptFromLegacy(optFns ...erltest.ReceiverOpt) ReceiverOpt {
+	return func(ro receiverOptions) receiverOptions {
+		opts := erltest.NewOpts(optFns...)
+		ro.timeout = opts.Timeout
+		ro.waitTimeout = opts.Timeout
+		ro.waitExit = opts.WaitExit
+		ro.noFail = opts.NoFail
+		ro.name = opts.Name
+		ro.logger = opts.Logger
+		ro.parent = opts.Parent
+		return ro
+	}
 }
 
 // Specify how long the test receiver should run for before stopping.
@@ -345,11 +363,16 @@ func (tr *TestReceiver) check(msg any) {
 			genserver.Reply(callReq.From, match.reply)
 		}
 		if do != nil {
-			do(ExpectArg{Msg: msg, From: &callReq.From, Self: tr.self, Exp: match})
+			do(ExpectArg{Msg: callReq.Msg, From: &callReq.From, Self: tr.self, Exp: match})
 		}
 	} else {
 		if do != nil {
-			do(ExpectArg{Msg: msg, Self: tr.self, Exp: match})
+			switch v := msg.(type) {
+			case genserver.CastRequest:
+				do(ExpectArg{Msg: v.Msg, Self: tr.self, Exp: match})
+			default:
+				do(ExpectArg{Msg: v, Self: tr.self, Exp: match})
+			}
 		}
 	}
 

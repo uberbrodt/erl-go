@@ -170,7 +170,7 @@ func (e *Expectation) Do(f DoFun) *Expectation {
 	e.do = func(arg ExpectArg) {
 		defer func() {
 			if r := recover(); r != nil {
-				e.t.Errorf("the Do() Handle for [%s - %s] expectation panicked", e.id, e.name)
+				e.t.Errorf("the Do() Handle for [%s - %s] expectation panicked: %v", e.id, e.name, r)
 			}
 		}()
 

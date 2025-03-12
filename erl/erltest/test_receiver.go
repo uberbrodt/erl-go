@@ -41,7 +41,7 @@ type callExpectation struct {
 	reply any
 }
 
-type ReceiverOpt func(ro receiverOptions) receiverOptions
+type ReceiverOpt func(ro ReceiverOptions) ReceiverOptions
 
 // used to inject more complex mocks based on a TestReceiver and have them checked
 // when [Wait] is called
@@ -49,14 +49,14 @@ type TestDependency interface {
 	Pass() (int, bool)
 }
 
-type receiverOptions struct {
-	timeout     time.Duration
-	waitTimeout time.Duration
-	waitExit    time.Duration
-	noFail      bool
-	name        string
-	logger      *slog.Logger
-	parent      erl.PID
+type ReceiverOptions struct {
+	Timeout     time.Duration
+	WaitTimeout time.Duration
+	WaitExit    time.Duration
+	NoFail      bool
+	Name        string
+	Logger      *slog.Logger
+	Parent      erl.PID
 }
 
 // Specify how long the test receiver should run for before stopping.
@@ -67,9 +67,9 @@ type receiverOptions struct {
 // you explicitly want to end before your test timeout, such as debugging a broken test
 // or negative testing expect options.
 func ReceiverTimeout(t time.Duration) ReceiverOpt {
-	return func(ro receiverOptions) receiverOptions {
-		ro.timeout = t
-		ro.waitExit = t - time.Second
+	return func(ro ReceiverOptions) ReceiverOptions {
+		ro.Timeout = t
+		ro.WaitExit = t - time.Second
 		return ro
 	}
 }
@@ -79,8 +79,8 @@ func ReceiverTimeout(t time.Duration) ReceiverOpt {
 // Wait will finish before this timeout if only options like [expect.AtMost] are used.
 // See [DefaultWaitTimeout] for the default. func WaitTimeout(t time.Duration) ReceiverOpt {
 func WaitTimeout(t time.Duration) ReceiverOpt {
-	return func(ro receiverOptions) receiverOptions {
-		ro.waitTimeout = t
+	return func(ro ReceiverOptions) ReceiverOptions {
+		ro.WaitTimeout = t
 		return ro
 	}
 }
@@ -88,59 +88,73 @@ func WaitTimeout(t time.Duration) ReceiverOpt {
 // Set this if you do not want the TestReceiver to call [testing.T.Fail] in
 // the [Wait] method.
 func NoFail() ReceiverOpt {
-	return func(ro receiverOptions) receiverOptions {
-		ro.noFail = true
+	return func(ro ReceiverOptions) ReceiverOptions {
+		ro.NoFail = true
 		return ro
 	}
 }
 
 // Set a name for the test receiver, that will be used in log messages
 func Name(name string) ReceiverOpt {
-	return func(ro receiverOptions) receiverOptions {
-		ro.name = name
+	return func(ro ReceiverOptions) ReceiverOptions {
+		ro.Name = name
 		return ro
 	}
 }
 
 // Set a parent for this test process. Defaults to [erl.rootPID]
 func Parent(parent erl.PID) ReceiverOpt {
-	return func(ro receiverOptions) receiverOptions {
-		ro.parent = parent
+	return func(ro ReceiverOptions) ReceiverOptions {
+		ro.Parent = parent
 		return ro
 	}
 }
 
 // XXX: might remove.
 func SetLogger(logger *slog.Logger) ReceiverOpt {
-	return func(ro receiverOptions) receiverOptions {
-		ro.logger = logger
+	return func(ro ReceiverOptions) ReceiverOptions {
+		ro.Logger = logger
 		return ro
 	}
+}
+
+func NewOpts(opts ...ReceiverOpt) ReceiverOptions {
+	rOpts := ReceiverOptions{
+		Timeout:     DefaultReceiverTimeout,
+		WaitExit:    DefaultReceiverTimeout - time.Second,
+		WaitTimeout: DefaultWaitTimeout,
+		Name:        fmt.Sprintf("%s-test-receiver", xid.New().String()),
+		Parent:      erl.RootPID(),
+	}
+	for _, o := range opts {
+		rOpts = o(rOpts)
+	}
+	return rOpts
 }
 
 // Creates a new TestReceiver, which is a process that you can set
 // message matching expectations on.
 func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
-	rOpts := receiverOptions{
-		timeout:     DefaultReceiverTimeout,
-		waitExit:    DefaultReceiverTimeout - time.Second,
-		waitTimeout: DefaultWaitTimeout,
-		name:        fmt.Sprintf("%s-test-receiver", xid.New().String()),
-		parent:      erl.RootPID(),
+	rOpts := ReceiverOptions{
+		Timeout:     DefaultReceiverTimeout,
+		WaitExit:    DefaultReceiverTimeout - time.Second,
+		WaitTimeout: DefaultWaitTimeout,
+		Name:        fmt.Sprintf("%s-test-receiver", xid.New().String()),
+		Parent:      erl.RootPID(),
 	}
 
 	if tout, ok := t.Deadline(); ok {
 		testExit := time.Until(tout) - time.Second
 		if testExit > DefaultReceiverTimeout {
 			fmt.Printf("-timeout greater than DefaultReceiverTimeout, adjusting: %s", testExit)
-			rOpts.timeout = testExit
-			rOpts.waitExit = testExit - time.Second
+			rOpts.Timeout = testExit
+			rOpts.WaitExit = testExit - time.Second
 		}
 
 		if testExit < DefaultReceiverTimeout {
 			fmt.Printf("-timeout less than DefaultReceiverTimeout, adjusting: %s", testExit)
-			rOpts.timeout = testExit
-			rOpts.waitExit = testExit - time.Second
+			rOpts.Timeout = testExit
+			rOpts.WaitExit = testExit - time.Second
 		}
 	}
 
@@ -156,12 +170,12 @@ func NewReceiver(t *testing.T, opts ...ReceiverOpt) (erl.PID, *TestReceiver) {
 
 	tr := &TestReceiver{
 		t: t, msgExpects: expectations, castExpects: castExpects, callExpects: callExpects,
-		opts: rOpts, noFail: rOpts.noFail, allExpects: allExpects, testdeps: testDeps, deps: deps,
+		opts: rOpts, noFail: rOpts.NoFail, allExpects: allExpects, testdeps: testDeps, deps: deps,
 	}
-	if rOpts.logger != nil {
-		tr.log = rOpts.logger
+	if rOpts.Logger != nil {
+		tr.log = rOpts.Logger
 	} else {
-		tr.log = slog.New(slog.NewTextHandler(os.Stderr, nil)).With("erltest.test-receiver", rOpts.name)
+		tr.log = slog.New(slog.NewTextHandler(os.Stderr, nil)).With("erltest.test-receiver", rOpts.Name)
 	}
 	pid := erl.Spawn(tr)
 	tr.setSelf(pid)
@@ -193,7 +207,7 @@ type TestReceiver struct {
 	failuresMx sync.RWMutex
 	// TODO: rename to waitExpired
 	waitExpired bool
-	opts        receiverOptions
+	opts        ReceiverOptions
 	exiting     bool
 	log         *slog.Logger
 }
@@ -250,7 +264,7 @@ func (tr *TestReceiver) safeTLogf(format string, args ...any) {
 
 // log and mark the test as failed
 func (tr *TestReceiver) safeTError(format string, args ...any) {
-	prefix := fmt.Sprintf("[TestReceiver: %s|PID: %+v]: %s", tr.opts.name, tr.getSelf(), format)
+	prefix := fmt.Sprintf("[TestReceiver: %s|PID: %+v]: %s", tr.opts.Name, tr.getSelf(), format)
 	tr.t.Errorf(prefix, args...)
 }
 
@@ -274,7 +288,7 @@ func (tr *TestReceiver) Receive(self erl.PID, inbox <-chan any) error {
 			tr.mx.Lock()
 			tr.check(msg)
 			tr.mx.Unlock()
-		case <-time.After(tr.opts.timeout):
+		case <-time.After(tr.opts.Timeout):
 			tr.safeTError("receive timeout")
 			// end test and call finish to print the expectations that didn't pass
 			tr.setWaitExpired(true)
@@ -511,13 +525,13 @@ func (tr *TestReceiver) Wait() {
 	var testEnded bool
 	for {
 
-		if time.Since(now) > tr.opts.waitExit {
+		if time.Since(now) > tr.opts.WaitExit {
 			tr.log.Info("test timed out waiting for expectations to be fulfilled")
 			tr.finish()
 			return
 		}
 
-		if time.Since(now) > tr.opts.waitTimeout {
+		if time.Since(now) > tr.opts.WaitTimeout {
 			if !testEnded {
 				tr.setWaitExpired(true)
 				testEnded = true
@@ -564,7 +578,7 @@ func (tr *TestReceiver) Stop() {
 				tr.t.Errorf("FAILURE: testreceiver %s could not start exitwaiter for dep %+v: %+v", tr.getSelf(), dep, err)
 				return
 			}
-			erl.Exit(tr.opts.parent, dep, exitreason.Kill)
+			erl.Exit(tr.opts.Parent, dep, exitreason.Kill)
 
 		}
 
@@ -578,12 +592,12 @@ func (tr *TestReceiver) Stop() {
 	}
 	var wg sync.WaitGroup
 	wg.Add(1)
-	_, err := exitwaiter.New(tr.t, tr.opts.parent, tr.getSelf(), &wg)
+	_, err := exitwaiter.New(tr.t, tr.opts.Parent, tr.getSelf(), &wg)
 	if err != nil {
 		tr.t.Errorf("FAILURE starting exitwaiter for test process: %+v", err)
 		return
 	}
-	erl.Exit(tr.opts.parent, tr.getSelf(), exitreason.TestExit)
+	erl.Exit(tr.opts.Parent, tr.getSelf(), exitreason.TestExit)
 	wg.Wait()
 	tr.t.Logf("test receiver has stopped: %s ", tr.getSelf())
 }
