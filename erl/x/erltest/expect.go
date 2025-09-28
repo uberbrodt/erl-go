@@ -207,7 +207,7 @@ func (e *Expectation) dropPrereqs() (preReqs []*Expectation) {
 	defer e.mx.Unlock()
 	preReqs = e.preReqs
 	e.preReqs = nil
-	return
+	return preReqs
 }
 
 // isPreReq returns true if other is a direct or indirect prerequisite to c.

@@ -352,6 +352,7 @@ func (tr *TestReceiver) check(msg any) {
 
 	}
 
+	// there was no matching expectation, return.
 	if match == nil {
 		return
 	}

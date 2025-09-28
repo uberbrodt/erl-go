@@ -234,17 +234,18 @@ func TestReceiver_AtLeast_MatchesExitMsg(t *testing.T) {
 
 func TestReceiver_TestExpectationPanick_FailsTest(t *testing.T) {
 	ex := func(ft *mock.MockTLike) {
-		ft.EXPECT().Errorf("the Do() Handle for [%s - %s] expectation panicked", gomock.Any(), gomock.Any())
+		ft.EXPECT().Errorf(gomock.Eq("the Do() Handle for [%s - %s] expectation panicked: %v"), gomock.Any(), gomock.Any(), gomock.Any())
 	}
 	fakeT := standardFakeT(t, &ex)
 	testPID, tr := erltest.NewReceiver(fakeT, erltest.WaitTimeout(time.Second))
 
-	tr.Expect(erl.ExitMsg{}, gomock.Any()).MinTimes(2).Do(func(arg erltest.ExpectArg) {
+	tr.Expect(testMsg1{}, gomock.Any()).MinTimes(2).Do(func(arg erltest.ExpectArg) {
 		panic("whatever man")
 	})
 
-	erl.Exit(testPID, testPID, exitreason.Normal)
-	erl.Exit(testPID, testPID, exitreason.Normal)
+	erl.Send(testPID, testMsg1{})
+	erl.Send(testPID, testMsg1{})
+
 
 	tr.Wait()
 }
