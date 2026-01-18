@@ -3,6 +3,7 @@
 ## 0.19.1 2025-3-11
 
 ### Added
+- Added documentation for the `supervisor` package.
 - Added a `WaitOn` method to `x/erltest/testcase` that will add a dependency
 whose `Wait()` method will be called in parallel with all other "Waitables" when
 `testcase.Case.Assert()` is called.

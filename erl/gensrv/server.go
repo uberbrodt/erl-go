@@ -11,15 +11,24 @@ import (
 	"github.com/uberbrodt/erl-go/erl/genserver"
 )
 
-// The initial Arg that is received in the Init callback/initially set in StartLink
+// config holds the configuration and callback functions for a GenServer instance.
+// It manages the server's behavior through registered handler functions for different message types.
 type config[State any] struct {
-	name         erl.Name
+	// name is the registered name of the server process
+	name erl.Name
+	// startTimeout is the maximum time allowed for server initialization
 	startTimeout time.Duration
-	initFun      func(self erl.PID, arg any) (genserver.InitResult[State], error)
+	// initFun is called during server startup to establish the initial state
+	initFun func(self erl.PID, arg any) (genserver.InitResult[State], error)
+	// terminateFun is called when the server is about to terminate
 	terminateFun func(self erl.PID, reason error, state State)
-	castFuns     map[reflect.Type]func(self erl.PID, arg any, state State) (newState State, continu any, err error)
-	infoFuns     map[reflect.Type]func(self erl.PID, arg any, state State) (newState State, continu any, err error)
-	callFuns     map[reflect.Type]func(self erl.PID, request any, from genserver.From, state State) (genserver.CallResult[State], error)
+	// castFuns maps message types to handler functions for asynchronous messages
+	castFuns map[reflect.Type]func(self erl.PID, arg any, state State) (newState State, continu any, err error)
+	// infoFuns maps message types to handler functions for information messages
+	infoFuns map[reflect.Type]func(self erl.PID, arg any, state State) (newState State, continu any, err error)
+	// callFuns maps message types to handler functions for synchronous requests
+	callFuns map[reflect.Type]func(self erl.PID, request any, from genserver.From, state State) (genserver.CallResult[State], error)
+	// continueFuns maps continuation types to handler functions for deferred processing
 	continueFuns map[reflect.Type]func(self erl.PID, contTerm any, state State) (State, any, error)
 }
 

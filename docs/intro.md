@@ -1,8 +1,9 @@
 # Erl-Go: A Supervised Actor Framework for Go.
 
 This framework is designed with the Erlang/OTP (and by extension Elixir)
-programming languages, though knowledge of either is not necessary to understand
-and utilize erl-go. It is recommended that you thoroughly understand the following
+programming languages as a model for concurrent programming,
+though knowledge of either is not necessary to understand and utilize erl-go.
+It is recommended that you thoroughly understand the following
 Go features before you read this document, as we'll use them as comparison
 against Golang implementations. The rest of this document introduces the
 basic concepts of the erl-go system and how they fit together.
@@ -93,5 +94,11 @@ All well-behaving processes are expected to consume the inbox until it is
 closed. In Go there is no way to interrupt an executing Goroutine, so failure to
 return when an inbox is closed will cause a process leak. Later we'll look at
 higher level abstractions that handle this logic for you.
+
+## Supervisors
+
+Supervisors are processes that can monitor other processes, called children, and
+restart them if they fail. For more information, see the [supervisor](./supervisor.md)
+documentation.
 
 
