@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Added
+- Add `SetTerminate` method to `testserver.Config` for registering Terminate
+  handlers in test GenServers.
 - Add `bin/test-loop.sh` script for continuous test execution with logging.
 - Add comprehensive documentation to the supervisor package including
 - Add comprehensive API documentation to genserver and gensrv packages:
@@ -431,6 +433,7 @@ Updates to `erltest`
 
 - made process.id an atomically incremented int. Gurantees uniqueness
   and is easier to read in the logs. This shouldn't affect users of the pkg.
+
 
 
 

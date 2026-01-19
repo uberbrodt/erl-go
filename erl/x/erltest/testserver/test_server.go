@@ -32,15 +32,22 @@ func NewConfig() *Config {
 // The initial Arg that is received in the Init callback/initially set in StartLink
 type Config struct {
 	// the function that will be used as the init handler
-	InitFn  func(self erl.PID, args any) (TestServer, any, error)
-	castFns map[any]func(self erl.PID, arg any, state TestServer) (newState TestServer, continu any, err error)
-	infoFns map[any]func(self erl.PID, arg any, state TestServer) (newState TestServer, continu any, err error)
-	callFns map[any]func(self erl.PID, request any, from genserver.From, state TestServer) (genserver.CallResult[TestServer], error)
+	InitFn      func(self erl.PID, args any) (TestServer, any, error)
+	TerminateFn func(self erl.PID, reason error, state TestServer)
+	castFns     map[any]func(self erl.PID, arg any, state TestServer) (newState TestServer, continu any, err error)
+	infoFns     map[any]func(self erl.PID, arg any, state TestServer) (newState TestServer, continu any, err error)
+	callFns     map[any]func(self erl.PID, request any, from genserver.From, state TestServer) (genserver.CallResult[TestServer], error)
 }
 
 // Set the Init Function for the GenServer. This will be called on start and every restart of a process
 func (c *Config) SetInit(InitFn func(self erl.PID, args any) (TestServer, any, error)) *Config {
 	c.InitFn = InitFn
+	return c
+}
+
+// SetTerminate sets the Terminate handler for the GenServer. This will be called when the process terminates.
+func (c *Config) SetTerminate(fn func(self erl.PID, reason error, state TestServer)) *Config {
+	c.TerminateFn = fn
 	return c
 }
 
@@ -103,6 +110,9 @@ func buildOpts(conf *Config) []gensrv.GenSrvOpt[TestServer] {
 	}
 	for msg, fn := range conf.callFns {
 		opts = append(opts, gensrv.RegisterCall(msg, fn))
+	}
+	if conf.TerminateFn != nil {
+		opts = append(opts, gensrv.RegisterTerminate(conf.TerminateFn))
 	}
 	return opts
 }
