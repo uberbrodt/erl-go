@@ -25,7 +25,7 @@ the `Process` interface).
 While it's preferable to communicate asynchronously, a synchronous abstraction
 is useful. This is where the `genserver.Call` primitive comes into play. By
 using a configurable timeout (and gen_caller under the hood), we can make a
-synchrous call that will be non-blocking.
+synchrous call that is synchronous but will unblock once the timeout is reached.
 
 
 ## Development Commands
