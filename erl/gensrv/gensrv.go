@@ -1,3 +1,31 @@
+/*
+Package gensrv provides a registration-based GenServer implementation.
+
+This is a higher-level alternative to the genserver package that allows you to
+register handlers for specific message types using functional options, rather
+than implementing the full GenServer interface.
+
+# Basic Usage
+
+	pid, err := gensrv.StartLink[MyState](self, nil,
+		gensrv.RegisterInit(func(self erl.PID, arg any) (MyState, any, error) {
+			return MyState{Count: 0}, nil, nil
+		}),
+		gensrv.RegisterCall(GetCount{}, func(self erl.PID, req GetCount, from genserver.From, state MyState) (genserver.CallResult[MyState], error) {
+			return genserver.CallResult[MyState]{Msg: state.Count, State: state}, nil
+		}),
+	)
+
+# Panic Recovery
+
+All panics in registered handlers are automatically caught at the Process level.
+You do not need to add defer/recover in your handler implementations. When a
+panic occurs in any registered callback (Init, Call, Cast, Info, Continue,
+Terminate), the process exits cleanly and supervision trees can restart it
+from fresh state.
+
+See the genserver package documentation for more details on panic recovery behavior.
+*/
 package gensrv
 
 import (

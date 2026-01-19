@@ -65,7 +65,7 @@ func WhereIs(name Name) (pid PID, exists bool) {
 	defer registrationMutex.RUnlock()
 
 	pid, exists = names[name]
-	return
+	return pid, exists
 }
 
 // Unregister given [Name]. Returns false if [Name] is not registered

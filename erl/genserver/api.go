@@ -1,3 +1,47 @@
+/*
+Package genserver implements the GenServer behavior from Erlang/OTP.
+
+A GenServer is a process that implements a standard set of callback functions
+to handle synchronous requests (Call), asynchronous messages (Cast), and
+information messages (Info). GenServers are the foundation for building
+stateful, concurrent services in the erl-go framework.
+
+# Basic Usage
+
+Implement the GenServer[State] interface:
+
+	type MyServer struct{}
+	type MyState struct { Count int }
+
+	func (s MyServer) Init(self erl.PID, args any) (genserver.InitResult[MyState], error) {
+		return genserver.InitResult[MyState]{State: MyState{Count: 0}}, nil
+	}
+
+	func (s MyServer) HandleCall(self erl.PID, request any, from genserver.From, state MyState) (genserver.CallResult[MyState], error) {
+		// Handle synchronous requests
+		return genserver.CallResult[MyState]{Msg: state.Count, State: state}, nil
+	}
+
+	// ... implement HandleCast, HandleInfo, HandleContinue, Terminate
+
+Then start the server:
+
+	pid, err := genserver.StartLink[MyState](self, MyServer{}, nil)
+
+# Panic Recovery
+
+All panics in GenServer callbacks are automatically caught at the Process level.
+You do not need to add defer/recover in your callback implementations. When a
+panic occurs:
+
+  - The panic is caught and converted to exitreason.Exception
+  - The process exits cleanly (links and monitors are notified)
+  - Linked supervisors receive the exit signal and can restart the process
+  - Call operations return an error rather than hanging indefinitely
+
+This ensures that supervision trees can restart processes from clean state
+after a panic, maintaining the fault-tolerance guarantees of the system.
+*/
 package genserver
 
 import (

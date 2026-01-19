@@ -4,11 +4,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-erl-go is an Erlang-like Actor System for Go. It implements core Erlang/OTP primitives including processes, monitors, links, supervisors, and gen_server behaviors, providing a foundation for building concurrent, fault-tolerant applications in Go. The goal of this project is to be a useful concurrency framework for Go developers that solves the following problems that are found with just basic go routines:
+erl-go is an Erlang-like Actor System for Go. It implements core Erlang/OTP primitives including processes, monitors, links, supervisors, and gen_server behaviors, providing a foundation for building concurrent, fault-tolerant applications in Go.
+
+The goal of this project is to be a useful concurrency framework for Go developers that solves the following problems that are found with just basic go routines:
 
 1. Deadlock free bi-directional communication between go routines.
 2. Supervision trees that ensure a go routine is restarted from an initial good
    state if a panic occurs or exits programatically.
+
+## Non-Blocking/Deadlock Free Goroutine Communication
+
+
+For unbuffered channels, any send operation is blocking to the caller. If we
+want to achieve high availability via concurrency within a single Go process, we
+need a way to make these communications non-blocking. We emulate the Erlang
+system by having the Goroutines communicate via an intermediary process that
+uses `inbox` package to store incoming messages and call these `Processes` (via
+the `Process` interface).
+
+While it's preferable to communicate asynchronously, a synchronous abstraction
+is useful. This is where the `genserver.Call` primitive comes into play. By
+using a configurable timeout (and gen_caller under the hood), we can make a
+synchrous call that will be non-blocking.
+
 
 ## Development Commands
 
@@ -57,9 +75,13 @@ make coverage-report
 make view-docs
 ```
 
-## Test File Requirements
+## Tests
 
-All test files (except `testutil*_test.go` and `main*_test.go`) MUST have an integration build tag as the first line:
+`gotest.tools/v3/assert` is the standard assertions framework.
+
+E2E/Integration tests that verify call and cast expectations via a TestReceiver
+should use the `erl/x/erltest` package.
+
 
 ```go
 //go:build integration
@@ -194,6 +216,23 @@ Exit reasons follow Erlang conventions:
 - `exitreason.Shutdown(err)` - Controlled shutdown with reason
 - `exitreason.Exception(err)` - Unexpected error
 - `exitreason.Ignore` - Special case to cancel process start
+
+### Panic Recovery
+**All panics in user code are automatically recovered at the Process level** (erl/process.go:93-106). When a panic occurs:
+
+1. The panic is caught by the Process wrapper's defer/recover
+2. Converted to `exitreason.Exception` with stack trace
+3. Process exits cleanly (all links and monitors are notified)
+4. Linked supervisor receives exit signal and can restart the process
+5. Restarted process begins with fresh state from Init
+
+**Key guarantees:**
+- Panics in any GenServer callback (Init, HandleCall, HandleCast, HandleInfo, HandleContinue, Terminate) are caught
+- `genserver.Call()` operations return error rather than hanging when server panics
+- Process cleanup always happens (links/monitors notified) even if Terminate panics
+- Supervision trees restart processes from clean state after panic
+
+**You don't need to add panic recovery in your callback code.** The Process-level handler provides universal protection. Just implement your business logic and let the supervision tree handle failures.
 
 ### Supervision Trees
 Build hierarchical fault-tolerance by nesting supervisors. Use Application as the root with signal handling to coordinate shutdown.

@@ -87,11 +87,11 @@ func (ex *Expectation) Check(arg erltest.ExpectArg) (next erltest.Expectation, f
 
 	// if we returned false on a match, this is a failure. Otherwise, returns a nested expectation
 	if next, failure = ex.h(arg); failure != nil {
-		return
+		return next, failure
 	}
 	for _, e := range ex.children {
 		if _, failure = e.Check(arg); failure != nil {
-			return
+			return next, failure
 		}
 	}
 

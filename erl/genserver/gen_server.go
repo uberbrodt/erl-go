@@ -182,7 +182,7 @@ func (gs *GenServerS[STATE]) handleInit(self erl.PID, msg any) (result InitResul
 		}
 	}()
 	result, err = gs.callback.Init(self, gs.args)
-	return
+	return result, err
 }
 
 func (gs *GenServerS[STATE]) doContinue(self erl.PID, inCont any, inState STATE) (STATE, error) {

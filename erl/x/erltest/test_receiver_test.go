@@ -246,7 +246,6 @@ func TestReceiver_TestExpectationPanick_FailsTest(t *testing.T) {
 	erl.Send(testPID, testMsg1{})
 	erl.Send(testPID, testMsg1{})
 
-
 	tr.Wait()
 }
 
