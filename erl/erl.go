@@ -16,6 +16,20 @@ language primatives needed to build are implemented here:
   - Exit Trap - allows a process to ignore an exit signal and convert it
     to a message signal that is sent to the user code.
 
+# Panic Recovery
+
+All user code running in a Process is automatically protected by panic recovery.
+When a panic occurs in a Runnable's Receive method (including GenServer callbacks),
+the Process wrapper catches it, converts it to exitreason.Exception, and exits
+cleanly. This ensures:
+
+  - Linked processes and monitors are notified
+  - Supervisors can restart the process from clean state
+  - No goroutine leaks or undefined behavior
+
+You do not need to add defer/recover in your Runnable implementations. The
+Process-level panic handler provides universal protection.
+
 This all works, but the API here may change as we expand into OTP behaviours.
 */
 package erl

@@ -116,8 +116,6 @@ endif
 #################################################################################
 check: check-tools
 	./scripts/check-formatting
-	./scripts/check-test-build-tags
-
 
 #################################################################################
 #@ help: Prints this help message

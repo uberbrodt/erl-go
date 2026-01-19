@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.19.2
+
+### 2026-01-18
+- Added tests for panic recovery genserver.
+- Updated docs
+
 ## 0.19.1 2025-3-11
 
 ### Added
