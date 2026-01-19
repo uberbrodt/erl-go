@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- Add `bin/test-loop.sh` script for continuous test execution with logging.
+
 ### Fixed
 - Fixed TOCTOU race condition in `Register` where a process could exit between
   the `IsAlive` check and `setName` call, leaving stale entries in the registry.
@@ -418,4 +421,5 @@ Updates to `erltest`
 
 - made process.id an atomically incremented int. Gurantees uniqueness
   and is easier to read in the logs. This shouldn't affect users of the pkg.
+
 
