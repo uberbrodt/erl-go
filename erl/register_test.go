@@ -55,26 +55,36 @@ func TestRegistered_ReturnsRegisteredProcesses(t *testing.T) {
 }
 
 func TestRegisteredCount_ReturnsCorrectCount(t *testing.T) {
-	// Get initial count (other tests may have registered names)
-	initialCount := RegisteredCount()
-
 	name1 := Name("count-test-1-b4c3d2e1-2345-6789-abcd-ef0123456789")
 	name2 := Name("count-test-2-b4c3d2e1-2345-6789-abcd-ef0123456790")
 
 	pid1 := testSpawn(t, &TestRunnable{t: t, expected: "foo"})
 	pid2 := testSpawn(t, &TestRunnable{t: t, expected: "bar"})
 
+	// Clean up on test exit
+	t.Cleanup(func() {
+		Unregister(name1)
+		Unregister(name2)
+	})
+
+	// Get count before our registrations
+	countBefore := RegisteredCount()
+
 	Register(name1, pid1)
-	assert.Equal(t, RegisteredCount(), initialCount+1)
+	countAfter1 := RegisteredCount()
+	assert.Equal(t, countAfter1, countBefore+1, "count should increase by 1 after first register")
 
 	Register(name2, pid2)
-	assert.Equal(t, RegisteredCount(), initialCount+2)
+	countAfter2 := RegisteredCount()
+	assert.Equal(t, countAfter2, countAfter1+1, "count should increase by 1 after second register")
 
 	Unregister(name1)
-	assert.Equal(t, RegisteredCount(), initialCount+1)
+	countAfter3 := RegisteredCount()
+	assert.Equal(t, countAfter3, countAfter2-1, "count should decrease by 1 after first unregister")
 
 	Unregister(name2)
-	assert.Equal(t, RegisteredCount(), initialCount)
+	countAfter4 := RegisteredCount()
+	assert.Equal(t, countAfter4, countAfter3-1, "count should decrease by 1 after second unregister")
 }
 
 func TestRegistered_ReturnsSnapshotSafeToIterate(t *testing.T) {

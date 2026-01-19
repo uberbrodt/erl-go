@@ -1,10 +1,19 @@
 # Changelog
 
-## 0.19.2
+## [Unreleased]
 
-### 2026-01-18
+### Fixed
+- Fixed TOCTOU race condition in `Register` where a process could exit between
+  the `IsAlive` check and `setName` call, leaving stale entries in the registry.
+  Registration now atomically verifies process status and sets the name.
+
+### Changed
+- Improved test reliability in `TestRegisteredCount_ReturnsCorrectCount` by using
+  relative count comparisons and adding proper cleanup.
 - Added tests for panic recovery genserver.
 - Updated docs
+
+
 
 ## 0.19.1 2025-3-11
 
@@ -409,3 +418,4 @@ Updates to `erltest`
 
 - made process.id an atomically incremented int. Gurantees uniqueness
   and is easier to read in the logs. This shouldn't affect users of the pkg.
+

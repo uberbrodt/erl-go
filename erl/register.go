@@ -54,29 +54,34 @@ const (
 //
 // A process can only have one registered name at a time. To change a process's
 // name, first call [Unregister] with the old name.
+//
+// This function is safe from TOCTOU races: the process status and name are
+// checked atomically, ensuring that if Register returns success, the process
+// will properly unregister itself when it exits.
 func Register(name Name, pid PID) *RegistrationError {
 	registrationMutex.Lock()
 	defer registrationMutex.Unlock()
+
 	if name == "nil" || name == "undefined" || name == "" {
 		return &RegistrationError{Kind: BadName}
 	}
 
-	if !IsAlive(pid) {
+	if pid.IsNil() {
 		return &RegistrationError{Kind: NoProc}
-	}
-
-	if pid.p.getName() != "" {
-		return &RegistrationError{Kind: AlreadyRegistered}
 	}
 
 	if _, ok := names[name]; ok {
 		return &RegistrationError{Kind: NameInUse}
 	}
 
+	// Atomically check process is running and set its name.
+	// This prevents TOCTOU race where process exits between IsAlive check
+	// and setName, which would leave a stale entry in the registry.
+	if err := pid.p.tryRegisterName(name); err != nil {
+		return err
+	}
+
 	names[name] = pid
-	// make sure process knows it's name. It will know to unregister itself
-	// when it exits now.
-	pid.p.setName(name)
 	return nil
 }
 
