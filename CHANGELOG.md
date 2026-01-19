@@ -4,6 +4,7 @@
 
 ### Added
 - Add `bin/test-loop.sh` script for continuous test execution with logging.
+- Add comprehensive documentation to the supervisor package including
 
 ### Fixed
 - Fixed TOCTOU race condition in `Register` where a process could exit between

@@ -13,16 +13,30 @@ var errRestartsExceeded = errors.New("supervisor restart intensity exceeded")
 
 var _ genserver.GenServer[supervisorState] = SupervisorS{}
 
+// SupFlagsS configures supervisor behavior including restart strategy and intensity limits.
+// Create using [NewSupFlags] with functional options.
 type SupFlagsS struct {
+	// Strategy determines which children to restart when one fails.
+	// Default: OneForOne
 	Strategy Strategy
-	// duration of the evaluation window for restarts, in seconds
+
+	// Period is the time window in seconds for counting restarts.
+	// Restarts older than Period seconds are not counted toward intensity.
+	// Default: 5
 	Period int
-	// how many restarts allowed within [Period]
+
+	// Intensity is the maximum number of restarts allowed within Period seconds.
+	// If this limit is exceeded, the supervisor terminates itself and all children.
+	// Set to 0 to terminate on the first child failure.
+	// Default: 1
 	Intensity int
 }
 
+// SupFlag is a functional option for configuring [SupFlagsS].
 type SupFlag func(flags SupFlagsS) SupFlagsS
 
+// SetStrategy sets the supervisor's restart strategy.
+// See [OneForOne], [OneForAll], and [RestForOne] for available strategies.
 func SetStrategy(strategy Strategy) SupFlag {
 	return func(flags SupFlagsS) SupFlagsS {
 		flags.Strategy = strategy
@@ -30,6 +44,9 @@ func SetStrategy(strategy Strategy) SupFlag {
 	}
 }
 
+// SetPeriod sets the restart evaluation window in seconds.
+// The supervisor tracks restarts within this rolling window.
+// Restarts older than Period seconds are forgotten and don't count toward intensity.
 func SetPeriod(period int) SupFlag {
 	return func(flags SupFlagsS) SupFlagsS {
 		flags.Period = period
@@ -37,6 +54,12 @@ func SetPeriod(period int) SupFlag {
 	}
 }
 
+// SetIntensity sets the maximum number of restarts allowed within the period.
+// If more than Intensity restarts occur within Period seconds, the supervisor
+// terminates itself (and all children), propagating the failure up the supervision tree.
+//
+// This prevents infinite restart loops when a child has a persistent problem.
+// Setting intensity to 0 means the supervisor terminates on the first child failure.
 func SetIntensity(intensity int) SupFlag {
 	return func(flags SupFlagsS) SupFlagsS {
 		flags.Intensity = intensity
@@ -44,6 +67,16 @@ func SetIntensity(intensity int) SupFlag {
 	}
 }
 
+// NewSupFlags creates supervisor flags with the given options.
+// Default values: Strategy=OneForOne, Period=5, Intensity=1.
+//
+// Example:
+//
+//	flags := supervisor.NewSupFlags(
+//		supervisor.SetStrategy(supervisor.OneForAll),
+//		supervisor.SetIntensity(3),
+//		supervisor.SetPeriod(10),
+//	)
 func NewSupFlags(flags ...SupFlag) SupFlagsS {
 	f := SupFlagsS{
 		Strategy:  OneForOne,
@@ -57,17 +90,44 @@ func NewSupFlags(flags ...SupFlag) SupFlagsS {
 	return f
 }
 
+// InitResult is returned by the [Supervisor.Init] callback to configure the supervisor.
 type InitResult struct {
-	SupFlags   SupFlagsS
+	// SupFlags configures the supervisor's restart strategy and intensity limits.
+	SupFlags SupFlagsS
+
+	// ChildSpecs defines the children to start, in order. Children are started
+	// sequentially; if any child fails to start, previously started children
+	// are stopped and the supervisor fails to start.
 	ChildSpecs []ChildSpec
-	Ignore     bool
+
+	// Ignore, if true, causes the supervisor to exit with [exitreason.Ignore],
+	// preventing it from starting. The calling process receives an error but
+	// no exit signal. Useful for conditional supervision based on configuration.
+	Ignore bool
 }
 
+// Supervisor is the callback interface for dynamic supervisor configuration.
+// Implement this interface when children need to be determined at runtime
+// rather than at compile time.
+//
+// For static child lists, use [StartDefaultLink] instead which doesn't require
+// implementing this interface.
 type Supervisor interface {
+	// Init is called when the supervisor starts to obtain configuration.
+	// Return the supervisor flags and child specifications.
+	//
+	// Set Ignore=true in the result to cancel supervisor startup without error
+	// propagation (the supervisor exits with exitreason.Ignore).
+	//
+	// The self parameter is the supervisor's own PID, which can be used for
+	// registration or other setup, but children should NOT be started here
+	// directly; return them in ChildSpecs instead.
 	Init(self erl.PID, args any) InitResult
 }
 
-// Impelements [genserver.GenServer] and accepts the callback module for Supervisor
+// SupervisorS implements [genserver.GenServer] and manages child processes according
+// to the configured strategy and restart rules. Users typically don't interact with
+// this type directly; use [StartDefaultLink] or [StartLink] instead.
 type SupervisorS struct {
 	callback Supervisor
 }
@@ -291,3 +351,4 @@ func (s SupervisorS) startChildren(self erl.PID, children *childSpecs) error {
 	}
 	return nil
 }
+
