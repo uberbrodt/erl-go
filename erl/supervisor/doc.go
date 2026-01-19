@@ -75,4 +75,3 @@ See the Erlang supervisor documentation for conceptual background:
 https://www.erlang.org/doc/apps/stdlib/supervisor
 */
 package supervisor
-

@@ -5,6 +5,15 @@
 ### Added
 - Add `bin/test-loop.sh` script for continuous test execution with logging.
 - Add comprehensive documentation to the supervisor package including
+- Add comprehensive API documentation to genserver and gensrv packages:
+  - Document all `GenServer` interface methods (`Init`, `HandleCall`, `HandleCast`,
+    `HandleInfo`, `HandleContinue`, `Terminate`) with usage guidance
+  - Document result types (`InitResult`, `CallResult`, `CastResult`, `InfoResult`)
+    with field descriptions
+  - Expand gensrv `doc.go` with complete usage examples covering continuations,
+    panic recovery, error handling, and the `From` parameter for deferred replies
+  - Add detailed documentation to all gensrv `Register*` functions, `Start*`
+    functions, and public types (`CastHandle`, `CallHandle`, `GenSrvOpt`)
 
 ### Fixed
 - Fixed TOCTOU race condition in `Register` where a process could exit between
@@ -422,5 +431,6 @@ Updates to `erltest`
 
 - made process.id an atomically incremented int. Gurantees uniqueness
   and is easier to read in the logs. This shouldn't affect users of the pkg.
+
 
 

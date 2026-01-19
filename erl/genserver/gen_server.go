@@ -33,39 +33,102 @@ type initAck struct {
 }
 
 type (
+	// InitResult is returned from the Init callback to provide the initial state
+	// and an optional continuation term.
+	//
+	// Fields:
+	//   - State: The initial server state
+	//   - Continue: If non-nil, triggers [GenServer.HandleContinue] before processing messages
 	InitResult[STATE any] struct {
 		State    STATE
 		Continue any
 	}
+
+	// CallResult is returned from HandleCall to provide the reply, updated state,
+	// and control flow options.
+	//
+	// Fields:
+	//   - NoReply: If true, no reply is sent; use [Reply] to respond later
+	//   - Msg: The reply to send to the caller (ignored if NoReply is true)
+	//   - State: The updated server state
+	//   - Continue: If non-nil, triggers [GenServer.HandleContinue] after the reply is sent
+	//
+	// Note: When Continue is set, the reply is sent to the caller before HandleContinue
+	// runs, allowing the caller to unblock while post-processing occurs.
 	CallResult[STATE any] struct {
-		// if true, then no reply will be sent to the caller. The genserver should reply with [genserver.Reply]
+		// if true, then no reply will be sent to the caller. The genserver should reply with [Reply]
 		// at a later time, otherwise the caller will time out.
 		NoReply bool
 		// The reply that will be sent to the caller
 		Msg any
 		// The updated state of the GenServer
 		State STATE
-		// if not nil, will call [HandleContinue] immmediately after [HandleCall] returns with this as the [continuation]
+		// if not nil, will call [GenServer.HandleContinue] immediately after [GenServer.HandleCall] returns with this as the continuation
 		Continue any
 	}
+
+	// CastResult is returned from HandleCast to provide the updated state
+	// and an optional continuation term.
+	//
+	// Fields:
+	//   - State: The updated server state
+	//   - Continue: If non-nil, triggers [GenServer.HandleContinue] after HandleCast returns
 	CastResult[STATE any] struct {
 		State    STATE
 		Continue any
 	}
+
+	// InfoResult is returned from HandleInfo to provide the updated state
+	// and an optional continuation term.
+	//
+	// Fields:
+	//   - State: The updated server state
+	//   - Continue: If non-nil, triggers [GenServer.HandleContinue] after HandleInfo returns
 	InfoResult[STATE any] struct {
 		State    STATE
 		Continue any
 	}
 )
 
+// GenServer is the interface that must be implemented to create a GenServer process.
+//
+// This is equivalent to implementing the gen_server behavior callbacks in Erlang/OTP.
+// All callbacks are invoked within the GenServer's process context.
 type GenServer[STATE any] interface {
+	// Init initializes the server state when the process starts.
+	// This is equivalent to Erlang's init/1 callback.
 	Init(self erl.PID, args any) (InitResult[STATE], error)
+
+	// HandleCall processes synchronous requests sent via [Call].
+	// This is equivalent to Erlang's handle_call/3 callback.
 	HandleCall(self erl.PID, request any, from From, state STATE) (CallResult[STATE], error)
+
+	// HandleCast processes asynchronous messages sent via [Cast].
+	// This is equivalent to Erlang's handle_cast/2 callback.
 	HandleCast(self erl.PID, request any, state STATE) (CastResult[STATE], error)
+
+	// HandleInfo processes messages sent directly to the process inbox via [erl.Send],
+	// as well as system messages like [erl.DownMsg] and [erl.ExitMsg].
+	// This is equivalent to Erlang's handle_info/2 callback.
 	HandleInfo(self erl.PID, msg any, state STATE) (InfoResult[STATE], error)
-	// Handles Continuation terms from other callbacks. Set the [continueTerm] to re-enter the [HandleContinue]
-	// callback with a new state
+
+	// HandleContinue processes continuation terms returned by other callbacks.
+	// This is equivalent to Erlang's handle_continue/2 callback.
+	//
+	// Continuations are useful for:
+	//   - Returning from Init quickly (unblocking [StartLink]) while performing
+	//     additional setup work before processing messages
+	//   - Returning a Call reply to the caller before doing post-processing work
+	//   - Implementing state machines with explicit transitions
+	//   - Code reuse when the same logic applies to multiple handler types
+	//
+	// The continuation is processed immediately after the triggering callback completes,
+	// before any new messages from the inbox. Returning a non-nil continueTerm will
+	// chain into another HandleContinue call.
 	HandleContinue(self erl.PID, continuation any, state STATE) (newState STATE, continueTerm any, err error)
+
+	// Terminate is called when the server is about to exit.
+	// This is equivalent to Erlang's terminate/2 callback.
 	Terminate(self erl.PID, reason error, state STATE)
 }
 

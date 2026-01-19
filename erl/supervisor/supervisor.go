@@ -351,4 +351,3 @@ func (s SupervisorS) startChildren(self erl.PID, children *childSpecs) error {
 	}
 	return nil
 }
-

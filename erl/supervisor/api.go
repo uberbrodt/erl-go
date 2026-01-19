@@ -108,4 +108,3 @@ func StartLink(self erl.PID, callback Supervisor, args any, optFuns ...LinkOpts)
 
 	return genserver.StartLink[supervisorState](self, sup, args, gsOpts...)
 }
-
