@@ -5,6 +5,8 @@
 ### Added
 - Add `SetTerminate` method to `testserver.Config` for registering Terminate
   handlers in test GenServers.
+- Add `AddContinueHandler` method to `testserver.Config` for registering
+  HandleContinue handlers in test GenServers.
 - Add `bin/test-loop.sh` script for continuous test execution with logging.
 - Add comprehensive documentation to the supervisor package including
 - Add comprehensive API documentation to genserver and gensrv packages:
@@ -25,11 +27,15 @@
   mechanism now sends an internal `stopRequest` message that triggers the
   `Terminate` callback before exiting, matching Erlang GenServer semantics.
   `exitreason.Kill` still bypasses `Terminate` per Erlang behavior.
+- Fixed `Terminate` callback not being called when `HandleCall`, `HandleCast`,
+  `HandleInfo`, or `HandleContinue` panics. Panic recovery now invokes
+  `Terminate` before the process exits, matching Erlang GenServer semantics.
 
 ### Changed
 - Improved test reliability in `TestRegisteredCount_ReturnsCorrectCount` by using
   relative count comparisons and adding proper cleanup.
-- Added tests for panic recovery genserver.
+- Added tests for panic recovery in genserver callbacks.
+- Refactored panic recovery logic into shared `panicToException` helper function.
 - Updated docs
 
 
@@ -437,6 +443,9 @@ Updates to `erltest`
 
 - made process.id an atomically incremented int. Gurantees uniqueness
   and is easier to read in the logs. This shouldn't affect users of the pkg.
+
+
+
 
 
 

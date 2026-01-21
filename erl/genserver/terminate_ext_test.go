@@ -254,10 +254,8 @@ type PanicCast struct {
 	Msg string
 }
 
-// TestTerminate_CalledOnPanic verifies that Terminate is called when a callback panics.
-// Per Erlang behavior, Terminate should be called even on panic.
-func TestTerminate_CalledOnPanic(t *testing.T) {
-	t.Skip("TODO: need to fix this feature")
+// TestTerminate_CalledOnPanic_Cast verifies that Terminate is called when HandleCast panics.
+func TestTerminate_CalledOnPanic_Cast(t *testing.T) {
 	tc := testcase.New(t, erltest.WaitTimeout(3*time.Second))
 
 	var serverPID erl.PID
@@ -289,6 +287,145 @@ func TestTerminate_CalledOnPanic(t *testing.T) {
 
 	tc.Act(func() {
 		genserver.Cast(serverPID, PanicCast{Msg: "intentional panic"})
+	})
+
+	tc.Assert(func() {
+		assert.Assert(t, !erl.IsAlive(serverPID))
+	})
+}
+
+// PanicCall is a message that causes the HandleCall to panic.
+type PanicCall struct {
+	Msg string
+}
+
+// TestTerminate_CalledOnPanic_Call verifies that Terminate is called when HandleCall panics.
+func TestTerminate_CalledOnPanic_Call(t *testing.T) {
+	tc := testcase.New(t, erltest.WaitTimeout(3*time.Second))
+
+	var serverPID erl.PID
+	testPID := tc.TestPID()
+
+	tc.Arrange(func(self erl.PID) {
+		tc.Receiver().Expect(TerminateCalled{}, gomock.Any()).Times(1).
+			Do(func(ea erltest.ExpectArg) {
+				msg := ea.Msg.(TerminateCalled)
+				assert.Assert(t, exitreason.IsException(msg.Reason),
+					"Expected Exception exit reason on panic, got: %v", msg.Reason)
+			})
+
+		tc.Receiver().Expect(erl.ExitMsg{}, gomock.Any()).Times(1)
+
+		serverPID = tc.StartServer(func(self erl.PID) (erl.PID, error) {
+			return testserver.StartLink(self, testserver.NewConfig().
+				SetTerminate(func(srvSelf erl.PID, reason error, state testserver.TestServer) {
+					erl.Send(testPID, TerminateCalled{Reason: reason})
+				}).
+				AddCallHandler(PanicCall{}, func(srvSelf erl.PID, request any, from genserver.From, state testserver.TestServer) (genserver.CallResult[testserver.TestServer], error) {
+					msg := request.(PanicCall)
+					panic(msg.Msg)
+				}))
+		})
+	})
+
+	tc.Act(func() {
+		// Call will return an error because the server panics
+		_, err := genserver.Call(tc.TestPID(), serverPID, PanicCall{Msg: "intentional panic"}, 3*time.Second)
+		// The call should fail because the server died
+		assert.Assert(t, err != nil)
+	})
+
+	tc.Assert(func() {
+		assert.Assert(t, !erl.IsAlive(serverPID))
+	})
+}
+
+// PanicInfo is a message that causes the HandleInfo to panic.
+type PanicInfo struct {
+	Msg string
+}
+
+// TestTerminate_CalledOnPanic_Info verifies that Terminate is called when HandleInfo panics.
+func TestTerminate_CalledOnPanic_Info(t *testing.T) {
+	tc := testcase.New(t, erltest.WaitTimeout(3*time.Second))
+
+	var serverPID erl.PID
+	testPID := tc.TestPID()
+
+	tc.Arrange(func(self erl.PID) {
+		tc.Receiver().Expect(TerminateCalled{}, gomock.Any()).Times(1).
+			Do(func(ea erltest.ExpectArg) {
+				msg := ea.Msg.(TerminateCalled)
+				assert.Assert(t, exitreason.IsException(msg.Reason),
+					"Expected Exception exit reason on panic, got: %v", msg.Reason)
+			})
+
+		tc.Receiver().Expect(erl.ExitMsg{}, gomock.Any()).Times(1)
+
+		serverPID = tc.StartServer(func(self erl.PID) (erl.PID, error) {
+			return testserver.StartLink(self, testserver.NewConfig().
+				SetTerminate(func(srvSelf erl.PID, reason error, state testserver.TestServer) {
+					erl.Send(testPID, TerminateCalled{Reason: reason})
+				}).
+				AddInfoHandler(PanicInfo{}, func(srvSelf erl.PID, arg any, state testserver.TestServer) (testserver.TestServer, any, error) {
+					msg := arg.(PanicInfo)
+					panic(msg.Msg)
+				}))
+		})
+	})
+
+	tc.Act(func() {
+		erl.Send(serverPID, PanicInfo{Msg: "intentional panic"})
+	})
+
+	tc.Assert(func() {
+		assert.Assert(t, !erl.IsAlive(serverPID))
+	})
+}
+
+// TriggerContinue is a message that triggers a continue which will panic.
+type TriggerContinue struct{}
+
+// PanicContinue is the continue term that causes HandleContinue to panic.
+type PanicContinue struct {
+	Msg string
+}
+
+// TestTerminate_CalledOnPanic_Continue verifies that Terminate is called when HandleContinue panics.
+func TestTerminate_CalledOnPanic_Continue(t *testing.T) {
+	tc := testcase.New(t, erltest.WaitTimeout(3*time.Second))
+
+	var serverPID erl.PID
+	testPID := tc.TestPID()
+
+	tc.Arrange(func(self erl.PID) {
+		tc.Receiver().Expect(TerminateCalled{}, gomock.Any()).Times(1).
+			Do(func(ea erltest.ExpectArg) {
+				msg := ea.Msg.(TerminateCalled)
+				assert.Assert(t, exitreason.IsException(msg.Reason),
+					"Expected Exception exit reason on panic, got: %v", msg.Reason)
+			})
+
+		tc.Receiver().Expect(erl.ExitMsg{}, gomock.Any()).Times(1)
+
+		serverPID = tc.StartServer(func(self erl.PID) (erl.PID, error) {
+			return testserver.StartLink(self, testserver.NewConfig().
+				SetTerminate(func(srvSelf erl.PID, reason error, state testserver.TestServer) {
+					erl.Send(testPID, TerminateCalled{Reason: reason})
+				}).
+				AddCastHandler(TriggerContinue{}, func(srvSelf erl.PID, arg any, state testserver.TestServer) (testserver.TestServer, any, error) {
+					// Return a continue term that will trigger HandleContinue
+					return state, PanicContinue{Msg: "intentional panic in continue"}, nil
+				}).
+				AddContinueHandler(PanicContinue{}, func(srvSelf erl.PID, arg any, state testserver.TestServer) (testserver.TestServer, any, error) {
+					msg := arg.(PanicContinue)
+					panic(msg.Msg)
+				}))
+		})
+	})
+
+	tc.Act(func() {
+		genserver.Cast(serverPID, TriggerContinue{})
 	})
 
 	tc.Assert(func() {
@@ -362,5 +499,9 @@ type simpleRunnable struct {
 func (r *simpleRunnable) Receive(self erl.PID, inbox <-chan any) error {
 	return r.receive(self, inbox)
 }
+
+
+
+
 
 

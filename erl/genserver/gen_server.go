@@ -238,28 +238,37 @@ func (gs *GenServerS[STATE]) Receive(self erl.PID, inbox <-chan any) error {
 	}
 }
 
+// panicToException converts a recovered panic value to an exitreason.Exception error.
+func panicToException(r any) error {
+	e, ok := r.(error)
+	if !ok {
+		return exitreason.Exception(fmt.Errorf("panic: %v", r))
+	}
+	if !exitreason.IsException(e) {
+		return exitreason.Exception(e)
+	}
+	return e
+}
+
 func (gs *GenServerS[STATE]) handleInit(self erl.PID, msg any) (result InitResult[STATE], err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			e, ok := r.(error)
-			if !ok {
-				err = exitreason.Exception(fmt.Errorf("panic in init: %v", r))
-			} else {
-				if !exitreason.IsException(e) {
-					err = exitreason.Exception(e)
-				} else {
-					err = e
-				}
-			}
-
+			err = panicToException(r)
 		}
 	}()
 	result, err = gs.callback.Init(self, gs.args)
 	return result, err
 }
 
-func (gs *GenServerS[STATE]) doContinue(self erl.PID, inCont any, inState STATE) (STATE, error) {
-	s := inState
+func (gs *GenServerS[STATE]) doContinue(self erl.PID, inCont any, inState STATE) (s STATE, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = panicToException(r)
+			gs.callback.Terminate(self, err, gs.state)
+		}
+	}()
+
+	s = inState
 	cont := inCont
 	var contErr error
 
@@ -277,7 +286,14 @@ func (gs *GenServerS[STATE]) doContinue(self erl.PID, inCont any, inState STATE)
 	return s, nil
 }
 
-func (gs *GenServerS[STATE]) handleInfoRequest(self erl.PID, msg any) error {
+func (gs *GenServerS[STATE]) handleInfoRequest(self erl.PID, msg any) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = panicToException(r)
+			gs.callback.Terminate(self, err, gs.state)
+		}
+	}()
+
 	result, err := gs.callback.HandleInfo(self, msg, gs.state)
 	gs.state = result.State
 
@@ -296,7 +312,15 @@ func (gs *GenServerS[STATE]) handleInfoRequest(self erl.PID, msg any) error {
 	return nil
 }
 
-func (gs *GenServerS[STATE]) handleCallRequest(self erl.PID, msg CallRequest) (bool, error) {
+func (gs *GenServerS[STATE]) handleCallRequest(self erl.PID, msg CallRequest) (stop bool, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = panicToException(r)
+			gs.callback.Terminate(self, err, gs.state)
+			stop = true
+		}
+	}()
+
 	result, err := gs.callback.HandleCall(self, msg.Msg, msg.From, gs.state)
 
 	switch {
@@ -328,7 +352,14 @@ func (gs *GenServerS[STATE]) handleCallRequest(self erl.PID, msg CallRequest) (b
 	return false, nil
 }
 
-func (gs *GenServerS[STATE]) handleCastRequest(self erl.PID, msg CastRequest) error {
+func (gs *GenServerS[STATE]) handleCastRequest(self erl.PID, msg CastRequest) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = panicToException(r)
+			gs.callback.Terminate(self, err, gs.state)
+		}
+	}()
+
 	result, err := gs.callback.HandleCast(self, msg.Msg, gs.state)
 	if err != nil {
 		err = exitreason.Wrap(err)
@@ -347,5 +378,10 @@ func (gs *GenServerS[STATE]) handleCastRequest(self erl.PID, msg CastRequest) er
 	}
 	return nil
 }
+
+
+
+
+
 
 

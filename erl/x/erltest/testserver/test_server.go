@@ -10,7 +10,6 @@ package testserver
 import (
 	"errors"
 	"fmt"
-	"reflect"
 
 	"github.com/uberbrodt/erl-go/erl"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
@@ -22,10 +21,11 @@ import (
 // Create a new [Config]. Sets default [InitFn] to [InitOK].
 func NewConfig() *Config {
 	return &Config{
-		InitFn:  InitOK,
-		castFns: make(map[any]func(self erl.PID, arg any, state TestServer) (newState TestServer, continu any, err error)),
-		infoFns: make(map[any]func(self erl.PID, arg any, state TestServer) (newState TestServer, continu any, err error)),
-		callFns: make(map[any]func(self erl.PID, request any, from genserver.From, state TestServer) (genserver.CallResult[TestServer], error)),
+		InitFn:      InitOK,
+		castFns:     make(map[any]func(self erl.PID, arg any, state TestServer) (newState TestServer, continu any, err error)),
+		infoFns:     make(map[any]func(self erl.PID, arg any, state TestServer) (newState TestServer, continu any, err error)),
+		callFns:     make(map[any]func(self erl.PID, request any, from genserver.From, state TestServer) (genserver.CallResult[TestServer], error)),
+		continueFns: make(map[any]func(self erl.PID, cont any, state TestServer) (newState TestServer, continu any, err error)),
 	}
 }
 
@@ -37,6 +37,7 @@ type Config struct {
 	castFns     map[any]func(self erl.PID, arg any, state TestServer) (newState TestServer, continu any, err error)
 	infoFns     map[any]func(self erl.PID, arg any, state TestServer) (newState TestServer, continu any, err error)
 	callFns     map[any]func(self erl.PID, request any, from genserver.From, state TestServer) (genserver.CallResult[TestServer], error)
+	continueFns map[any]func(self erl.PID, cont any, state TestServer) (newState TestServer, continu any, err error)
 }
 
 // Set the Init Function for the GenServer. This will be called on start and every restart of a process
@@ -74,13 +75,21 @@ func (c *Config) AddInfoHandler(msg any, fn func(self erl.PID, arg any, state Te
 
 // Add a Call handler function for [msg]. If there is already a handler added for [msg], this function will panic.
 func (c *Config) AddCallHandler(msg any, fn func(self erl.PID, request any, from genserver.From, state TestServer) (genserver.CallResult[TestServer], error)) *Config {
-	t := reflect.TypeOf(msg)
-
-	if _, ok := c.callFns[t]; ok {
+	if _, ok := c.callFns[msg]; ok {
 		panic(fmt.Errorf("a handler for %T already exists", msg))
 	}
 
-	c.callFns[t] = fn
+	c.callFns[msg] = fn
+	return c
+}
+
+// Add a Continue handler function for [msg]. If there is already a handler added for [msg], this function will panic.
+func (c *Config) AddContinueHandler(msg any, fn func(self erl.PID, cont any, state TestServer) (newState TestServer, continu any, err error)) *Config {
+	if _, ok := c.continueFns[msg]; ok {
+		panic(fmt.Errorf("a continue handler for %T already exists", msg))
+	}
+
+	c.continueFns[msg] = fn
 	return c
 }
 
@@ -110,6 +119,9 @@ func buildOpts(conf *Config) []gensrv.GenSrvOpt[TestServer] {
 	}
 	for msg, fn := range conf.callFns {
 		opts = append(opts, gensrv.RegisterCall(msg, fn))
+	}
+	for msg, fn := range conf.continueFns {
+		opts = append(opts, gensrv.RegisterContinue(msg, fn))
 	}
 	if conf.TerminateFn != nil {
 		opts = append(opts, gensrv.RegisterTerminate(conf.TerminateFn))
