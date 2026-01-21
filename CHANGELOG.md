@@ -19,6 +19,18 @@
   - Add detailed documentation to all gensrv `Register*` functions, `Start*`
     functions, and public types (`CastHandle`, `CallHandle`, `GenSrvOpt`)
 
+### Changed
+- Refactored `application` package to use `gensrv` instead of manual Runnable
+  implementation. The application GenServer now uses proper message handlers
+  (`RegisterInit`, `RegisterInfo`, `RegisterTerminate`) for cleaner separation
+  of concerns and proper lifecycle management. The `App.Stopped()` method now
+  also checks if the underlying process is alive.
+- Improved test reliability in `TestRegisteredCount_ReturnsCorrectCount` by using
+  relative count comparisons and adding proper cleanup.
+- Added tests for panic recovery in genserver callbacks.
+- Refactored panic recovery logic into shared `panicToException` helper function.
+- Updated docs
+
 ### Fixed
 - Fixed TOCTOU race condition in `Register` where a process could exit between
   the `IsAlive` check and `setName` call, leaving stale entries in the registry.
@@ -30,13 +42,6 @@
 - Fixed `Terminate` callback not being called when `HandleCall`, `HandleCast`,
   `HandleInfo`, or `HandleContinue` panics. Panic recovery now invokes
   `Terminate` before the process exits, matching Erlang GenServer semantics.
-
-### Changed
-- Improved test reliability in `TestRegisteredCount_ReturnsCorrectCount` by using
-  relative count comparisons and adding proper cleanup.
-- Added tests for panic recovery in genserver callbacks.
-- Refactored panic recovery logic into shared `panicToException` helper function.
-- Updated docs
 
 
 
