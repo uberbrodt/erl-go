@@ -32,6 +32,12 @@ type initAck struct {
 	err    error
 }
 
+// stopRequest is an internal message sent by genStopper to request graceful termination.
+// This triggers the Terminate callback before the process exits.
+type stopRequest struct {
+	reason *exitreason.S
+}
+
 type (
 	// InitResult is returned from the Init callback to provide the initial state
 	// and an optional continuation term.
@@ -206,6 +212,10 @@ func (gs *GenServerS[STATE]) Receive(self erl.PID, inbox <-chan any) error {
 			if err := gs.handleCastRequest(self, msgT); err != nil {
 				return err
 			}
+		case stopRequest:
+			erl.DebugPrintf("GenServer[%v] received stopRequest with reason %v", self, msgT.reason)
+			gs.callback.Terminate(self, msgT.reason, gs.state)
+			return msgT.reason
 		case erl.ExitMsg:
 			erl.DebugPrintf("GenServer[%v] got ExitMsg with reason %s from process %+v", self, msgT.Reason, msgT.Proc)
 			if msgT.Proc.Equals(gs.parent) {
@@ -337,3 +347,5 @@ func (gs *GenServerS[STATE]) handleCastRequest(self erl.PID, msg CastRequest) er
 	}
 	return nil
 }
+
+

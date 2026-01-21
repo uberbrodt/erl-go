@@ -21,6 +21,10 @@
 - Fixed TOCTOU race condition in `Register` where a process could exit between
   the `IsAlive` check and `setName` call, leaving stale entries in the registry.
   Registration now atomically verifies process status and sets the name.
+- Fixed `genserver.Stop` not invoking the `Terminate` callback. The stop
+  mechanism now sends an internal `stopRequest` message that triggers the
+  `Terminate` callback before exiting, matching Erlang GenServer semantics.
+  `exitreason.Kill` still bypasses `Terminate` per Erlang behavior.
 
 ### Changed
 - Improved test reliability in `TestRegisteredCount_ReturnsCorrectCount` by using
