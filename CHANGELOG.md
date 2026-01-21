@@ -2,7 +2,19 @@
 
 ## [Unreleased]
 
+### Changed
+- Clarified documentation for `Terminate` callback in `genserver.GenServer`
+  interface and `gensrv.RegisterTerminate` function to accurately describe
+  when the terminate handler is invoked:
+  - On `Stop()` calls
+  - On callback panics or errors
+  - On exit signals when trapping exits (via `erl.ProcessFlag` with `erl.TrapExit`)
+- Updated docs to note that exit signals cause immediate termination WITHOUT
+  calling Terminate when the GenServer is not trapping exits.
+
 ### Added
+- Add `InitOKTrapExit` helper function to `testserver` package for initializing
+  test servers that trap exit signals.
 - Add `SetTerminate` method to `testserver.Config` for registering Terminate
   handlers in test GenServers.
 - Add `AddContinueHandler` method to `testserver.Config` for registering
@@ -448,6 +460,8 @@ Updates to `erltest`
 
 - made process.id an atomically incremented int. Gurantees uniqueness
   and is easier to read in the logs. This shouldn't affect users of the pkg.
+
+
 
 
 

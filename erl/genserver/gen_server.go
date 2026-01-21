@@ -135,6 +135,19 @@ type GenServer[STATE any] interface {
 
 	// Terminate is called when the server is about to exit.
 	// This is equivalent to Erlang's terminate/2 callback.
+	//
+	// Terminate is invoked in the following scenarios:
+	//   1. When [Stop] is called on the GenServer process
+	//   2. When any callback (HandleCall, HandleCast, HandleInfo, HandleContinue)
+	//      panics or returns an error
+	//   3. When the GenServer is trapping exits (via [erl.ProcessFlag] with [erl.TrapExit])
+	//      and receives an [erl.ExitMsg] from its parent process or supervisor
+	//
+	// Note: If the GenServer is NOT trapping exits, exit signals from linked processes
+	// cause immediate termination without calling Terminate.
+	//
+	// Terminate cannot prevent the server from exiting. Use it for cleanup tasks like
+	// closing connections, releasing resources, or persisting state.
 	Terminate(self erl.PID, reason error, state STATE)
 }
 
@@ -378,6 +391,7 @@ func (gs *GenServerS[STATE]) handleCastRequest(self erl.PID, msg CastRequest) (e
 	}
 	return nil
 }
+
 
 
 

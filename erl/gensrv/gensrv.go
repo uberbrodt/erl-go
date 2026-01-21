@@ -458,14 +458,15 @@ func RegisterContinue[State any, Msg any](matchType any, fn func(self erl.PID, c
 // RegisterTerminate registers a cleanup handler called when the server terminates.
 //
 // This is equivalent to implementing terminate/2 in Erlang's gen_server.
-// The terminate handler is called when the server is about to exit, regardless
-// of the reason (normal shutdown, error, or supervisor stop).
 //
-// The terminate handler is called when:
-//   - Any handler returns an error
-//   - [genserver.Stop] is called on the server
-//   - The server receives an exit signal from a linked process
-//   - The parent process exits (if the server was started with [StartLink])
+// The terminate handler is invoked in the following scenarios:
+//  1. When [genserver.Stop] is called on the GenServer process
+//  2. When any handler (Call, Cast, Info, Continue) panics or returns an error
+//  3. When the GenServer is trapping exits (via [erl.ProcessFlag] with [erl.TrapExit])
+//     and receives an [erl.ExitMsg] from its parent process or supervisor
+//
+// Note: If the GenServer is NOT trapping exits, exit signals from linked processes
+// cause immediate termination without calling the terminate handler.
 //
 // Parameters:
 //   - terminate: The cleanup function to call before the server exits

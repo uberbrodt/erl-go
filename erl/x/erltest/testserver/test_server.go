@@ -154,6 +154,16 @@ func InitOK(self erl.PID, args any) (TestServer, any, error) {
 	return TestServer{Conf: conf}, nil, nil
 }
 
+func InitOKTrapExit(self erl.PID, args any) (TestServer, any, error) {
+	conf, ok := args.(*Config)
+
+	if !ok {
+		return TestServer{}, nil, exitreason.Exception(errors.New("Init arg must be a {}"))
+	}
+	erl.ProcessFlag(self, erl.TrapExit, true)
+	return TestServer{Conf: conf}, nil, nil
+}
+
 func InitError(self erl.PID, args any) (TestServer, any, error) {
 	conf, ok := args.(*Config)
 

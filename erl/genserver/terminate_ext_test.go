@@ -201,7 +201,6 @@ func TestTerminate_CalledOnHandleInfoError(t *testing.T) {
 // TestTerminate_CalledOnParentExit verifies Terminate is called when the parent
 // process exits.
 func TestTerminate_CalledOnParentExit(t *testing.T) {
-	t.Skip("TODO: need to fix this feature")
 	tc := testcase.New(t, erltest.WaitTimeout(3*time.Second))
 
 	var childServerPID erl.PID
@@ -228,7 +227,7 @@ func TestTerminate_CalledOnParentExit(t *testing.T) {
 				childPID, err := testserver.StartLink(parentSelf, testserver.NewConfig().
 					SetTerminate(func(childSelf erl.PID, reason error, state testserver.TestServer) {
 						erl.Send(testPID, TerminateCalled{Reason: reason})
-					}))
+					}).SetInit(testserver.InitOKTrapExit))
 				if err != nil {
 					return testserver.TestServer{}, nil, err
 				}
@@ -499,9 +498,3 @@ type simpleRunnable struct {
 func (r *simpleRunnable) Receive(self erl.PID, inbox <-chan any) error {
 	return r.receive(self, inbox)
 }
-
-
-
-
-
-
