@@ -167,4 +167,3 @@ func (ck *childKiller) handleDown(self erl.PID, msg erl.DownMsg) {
 		ck.parent <- childKillerDoneMsg{err: msg.Reason}
 	}
 }
-

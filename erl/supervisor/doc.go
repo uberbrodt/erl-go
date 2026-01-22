@@ -107,16 +107,48 @@ Return values:
 
 Failing to link means the supervisor won't receive exit signals from the child.
 
+# Dynamic Child Management
+
+Supervisors support runtime child management via these APIs:
+
+  - [StartChild]: Add and start a new child dynamically
+  - [TerminateChild]: Stop a running child (keeping its spec for later restart)
+  - [RestartChild]: Restart a previously terminated child
+  - [DeleteChild]: Remove a child specification entirely
+  - [WhichChildren]: List all children and their current status
+  - [CountChildren]: Get counts of children by category
+
+These APIs follow Erlang supervisor semantics. Dynamic operations do not
+affect restart intensity calculations - only automatic restarts from child
+exits count toward intensity limits.
+
+Example:
+
+	// Add a new child at runtime
+	spec := supervisor.NewChildSpec("new_worker", workerStartFn)
+	pid, err := supervisor.StartChild(supPID, spec)
+
+	// Stop a child but keep its spec
+	err = supervisor.TerminateChild(supPID, "new_worker")
+
+	// Restart it later
+	pid, err = supervisor.RestartChild(supPID, "new_worker")
+
+	// Remove the spec entirely
+	err = supervisor.TerminateChild(supPID, "new_worker")
+	err = supervisor.DeleteChild(supPID, "new_worker")
+
+	// Inspect children
+	children, err := supervisor.WhichChildren(supPID)
+	count, err := supervisor.CountChildren(supPID)
+
 # Differences from Erlang/OTP
 
 This implementation follows Erlang supervisor semantics closely, with these notes:
 
-  - No simple_one_for_one strategy (use a regular supervisor with dynamic children)
-  - No start_child/terminate_child/restart_child dynamic API yet
-  - No count_children/which_children introspection API yet
+  - No simple_one_for_one strategy (planned: use DynamicSupervisor when available)
 
 See the Erlang supervisor documentation for conceptual background:
 https://www.erlang.org/doc/apps/stdlib/supervisor
 */
 package supervisor
-

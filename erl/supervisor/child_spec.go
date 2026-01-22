@@ -154,6 +154,7 @@ func NewChildSpec(id string, start StartFunSpec, opts ...ChildSpecOpt) ChildSpec
 		Start:    start,
 		Restart:  Permanent,
 		Shutdown: ShutdownOpt{Timeout: 5_000},
+		Type:     WorkerChild,
 	}
 
 	for _, opt := range opts {
@@ -223,4 +224,3 @@ type ChildSpec struct {
 	// Used during shutdown to track completion.
 	terminated bool
 }
-

@@ -1,5 +1,7 @@
 package supervisor
 
+import "github.com/uberbrodt/erl-go/erl"
+
 // Strategy defines how a supervisor responds when a child process terminates.
 // The strategy determines which children are restarted alongside the failed child.
 //
@@ -160,3 +162,62 @@ const (
 	WorkerChild ChildType = "worker"
 )
 
+// ChildStatus represents the current state of a child process.
+// Used in [ChildInfo] returned by [WhichChildren].
+type ChildStatus string
+
+const (
+	// ChildRunning indicates the child process is currently running.
+	ChildRunning ChildStatus = "running"
+
+	// ChildTerminated indicates the child was stopped via [TerminateChild]
+	// and its spec is retained for potential restart via [RestartChild].
+	ChildTerminated ChildStatus = "terminated"
+
+	// ChildUndefined indicates the child is not running because:
+	//   - Its Start function returned [exitreason.Ignore]
+	//   - It has not been started yet
+	//   - It exited and was not restarted (Transient/Temporary with clean exit)
+	ChildUndefined ChildStatus = "undefined"
+)
+
+// ChildInfo contains information about a single child process.
+// Returned by [WhichChildren].
+//
+// This is equivalent to the tuples returned by Erlang's supervisor:which_children/1.
+type ChildInfo struct {
+	// ID is the unique identifier for this child within its supervisor.
+	ID string
+
+	// PID is the child's process ID if running, otherwise the zero value.
+	// Check Status to determine if the child is actually running.
+	PID erl.PID
+
+	// Type indicates whether this child is a worker or supervisor.
+	Type ChildType
+
+	// Status indicates the child's current state (running, terminated, or undefined).
+	Status ChildStatus
+
+	// Restart is the child's restart strategy (Permanent, Transient, or Temporary).
+	Restart Restart
+}
+
+// ChildCount contains counts of children by category.
+// Returned by [CountChildren].
+//
+// This is equivalent to the proplist returned by Erlang's supervisor:count_children/1.
+type ChildCount struct {
+	// Specs is the total number of child specifications in the supervisor.
+	// This includes running, terminated, and undefined children.
+	Specs int
+
+	// Active is the number of children currently running.
+	Active int
+
+	// Supervisors is the number of children with Type == [SupervisorChild].
+	Supervisors int
+
+	// Workers is the number of children with Type == [WorkerChild].
+	Workers int
+}

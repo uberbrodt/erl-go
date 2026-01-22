@@ -13,6 +13,32 @@ var errRestartsExceeded = errors.New("supervisor restart intensity exceeded")
 
 var _ genserver.GenServer[supervisorState] = SupervisorS{}
 
+// Internal request types for HandleCall - used by public API functions
+type (
+	whichChildrenRequest  struct{}
+	countChildrenRequest  struct{}
+	startChildRequest     struct{ spec ChildSpec }
+	terminateChildRequest struct{ childID string }
+	restartChildRequest   struct{ childID string }
+	deleteChildRequest    struct{ childID string }
+)
+
+// Internal response types for HandleCall - returned to public API functions
+type (
+	whichChildrenResponse struct{ children []ChildInfo }
+	countChildrenResponse struct{ count ChildCount }
+	startChildResponse    struct {
+		pid erl.PID
+		err error
+	}
+	terminateChildResponse struct{ err error }
+	restartChildResponse   struct {
+		pid erl.PID
+		err error
+	}
+	deleteChildResponse struct{ err error }
+)
+
 // SupFlagsS configures supervisor behavior including restart strategy and intensity limits.
 //
 // Create using [NewSupFlags] with functional options:
@@ -294,16 +320,63 @@ func (s SupervisorS) Init(self erl.PID, args any) (genserver.InitResult[supervis
 
 // HandleCall implements [genserver.GenServer.HandleCall].
 //
-// Currently returns "not implemented" for all requests.
-// Future versions will support dynamic child management:
-//   - start_child: Add and start a new child
-//   - terminate_child: Stop a running child
-//   - restart_child: Restart a child
-//   - which_children: List children and their status
-//   - count_children: Count children by status
+// Handles dynamic child management requests:
+//   - [WhichChildren]: List children and their status
+//   - [CountChildren]: Count children by category
+//   - [StartChild]: Add and start a new child
+//   - [TerminateChild]: Stop a running child
+//   - [RestartChild]: Restart a terminated child
+//   - [DeleteChild]: Remove a child specification
 func (s SupervisorS) HandleCall(self erl.PID, request any, from genserver.From, state supervisorState) (genserver.CallResult[supervisorState], error) {
-	// TODO: IMPLEMENT
-	return genserver.CallResult[supervisorState]{Msg: "not implemented", State: state}, nil
+	switch req := request.(type) {
+	case whichChildrenRequest:
+		children := s.doWhichChildren(state)
+		return genserver.CallResult[supervisorState]{
+			Msg:   whichChildrenResponse{children: children},
+			State: state,
+		}, nil
+
+	case countChildrenRequest:
+		count := s.doCountChildren(state)
+		return genserver.CallResult[supervisorState]{
+			Msg:   countChildrenResponse{count: count},
+			State: state,
+		}, nil
+
+	case startChildRequest:
+		pid, newState, err := s.doStartChild(self, req.spec, state)
+		return genserver.CallResult[supervisorState]{
+			Msg:   startChildResponse{pid: pid, err: err},
+			State: newState,
+		}, nil
+
+	case terminateChildRequest:
+		newState, err := s.doTerminateChild(self, req.childID, state)
+		return genserver.CallResult[supervisorState]{
+			Msg:   terminateChildResponse{err: err},
+			State: newState,
+		}, nil
+
+	case restartChildRequest:
+		pid, newState, err := s.doRestartChild(self, req.childID, state)
+		return genserver.CallResult[supervisorState]{
+			Msg:   restartChildResponse{pid: pid, err: err},
+			State: newState,
+		}, nil
+
+	case deleteChildRequest:
+		newState, err := s.doDeleteChild(req.childID, state)
+		return genserver.CallResult[supervisorState]{
+			Msg:   deleteChildResponse{err: err},
+			State: newState,
+		}, nil
+
+	default:
+		return genserver.CallResult[supervisorState]{
+			Msg:   "unknown request",
+			State: state,
+		}, nil
+	}
 }
 
 // HandleInfo implements [genserver.GenServer.HandleInfo].
@@ -558,3 +631,197 @@ func (s SupervisorS) startChildren(self erl.PID, children *childSpecs) error {
 	return nil
 }
 
+// =============================================================================
+// Dynamic Child Management Handlers
+// =============================================================================
+
+// doWhichChildren returns information about all children.
+// Called by HandleCall for whichChildrenRequest.
+func (s SupervisorS) doWhichChildren(state supervisorState) []ChildInfo {
+	specs := state.children.list()
+	result := make([]ChildInfo, 0, len(specs))
+
+	for _, spec := range specs {
+		info := ChildInfo{
+			ID:      spec.ID,
+			PID:     spec.pid,
+			Type:    spec.Type,
+			Restart: spec.Restart,
+		}
+
+		// Determine status based on internal state
+		switch {
+		case spec.ignored:
+			info.Status = ChildUndefined
+			info.PID = erl.PID{} // Clear PID for undefined children
+		case spec.terminated:
+			info.Status = ChildTerminated
+			info.PID = erl.PID{} // Clear PID for terminated children
+		case erl.IsAlive(spec.pid):
+			info.Status = ChildRunning
+		default:
+			// Child was running but has exited (race or not yet processed)
+			info.Status = ChildUndefined
+			info.PID = erl.PID{}
+		}
+
+		result = append(result, info)
+	}
+
+	return result
+}
+
+// doCountChildren returns counts of children by category.
+// Called by HandleCall for countChildrenRequest.
+func (s SupervisorS) doCountChildren(state supervisorState) ChildCount {
+	specs := state.children.list()
+	count := ChildCount{
+		Specs: len(specs),
+	}
+
+	for _, spec := range specs {
+		// Count by type
+		if spec.Type == SupervisorChild {
+			count.Supervisors++
+		} else {
+			count.Workers++
+		}
+
+		// Count active (running) children
+		if !spec.ignored && !spec.terminated && erl.IsAlive(spec.pid) {
+			count.Active++
+		}
+	}
+
+	return count
+}
+
+// doStartChild adds and starts a new child.
+// Called by HandleCall for startChildRequest.
+//
+// Returns:
+//   - (pid, state, nil): Child started successfully
+//   - (_, state, AlreadyStartedError): Child with ID exists and is running
+//   - (_, state, ErrAlreadyPresent): Child with ID exists but is not running
+//   - (_, state, error): Child failed to start
+//
+// Note: This operation does NOT affect restart intensity calculations.
+func (s SupervisorS) doStartChild(self erl.PID, spec ChildSpec, state supervisorState) (erl.PID, supervisorState, error) {
+	// Check if child already exists
+	_, existing, err := state.children.get(spec.ID)
+	if err == nil {
+		// Child exists - check if running
+		if !existing.terminated && !existing.ignored && erl.IsAlive(existing.pid) {
+			return erl.PID{}, state, AlreadyStartedError{PID: existing.pid}
+		}
+		return erl.PID{}, state, ErrAlreadyPresent
+	}
+
+	// Start the new child
+	startedSpec, err := s.startChild(self, spec)
+	if err != nil {
+		return erl.PID{}, state, err
+	}
+
+	// Add to children list
+	newChildren := &childSpecs{specs: []ChildSpec{startedSpec}}
+	if appendErr := state.children.append(newChildren); appendErr != nil {
+		// This shouldn't happen since we checked for duplicates above
+		return erl.PID{}, state, appendErr
+	}
+
+	return startedSpec.pid, state, nil
+}
+
+// doTerminateChild stops a running child but keeps its specification.
+// Called by HandleCall for terminateChildRequest.
+//
+// The child can be restarted later via RestartChild or removed via DeleteChild.
+// This operation does NOT affect restart intensity calculations.
+//
+// Returns:
+//   - (state, nil): Child was terminated (or was already not running)
+//   - (state, ErrNotFound): No child with the given ID exists
+func (s SupervisorS) doTerminateChild(self erl.PID, childID string, state supervisorState) (supervisorState, error) {
+	idx, spec, err := state.children.get(childID)
+	if err != nil {
+		return state, ErrNotFound
+	}
+
+	// If already terminated or ignored, nothing to do
+	if spec.terminated || spec.ignored || !erl.IsAlive(spec.pid) {
+		// Mark as terminated if not already
+		spec.terminated = true
+		spec.pid = erl.PID{}
+		state.children.specs[idx] = spec
+		return state, nil
+	}
+
+	// Terminate the child using existing terminateChild logic
+	// Note: terminateChild spawns childKiller which handles the shutdown
+	terminatedSpec, _ := s.terminateChild(self, spec)
+	terminatedSpec.terminated = true
+	terminatedSpec.pid = erl.PID{} // Clear PID to prevent auto-restart via findByPID
+	state.children.specs[idx] = terminatedSpec
+
+	return state, nil
+}
+
+// doRestartChild restarts a terminated child.
+// Called by HandleCall for restartChildRequest.
+//
+// Returns:
+//   - (pid, state, nil): Child restarted successfully
+//   - (_, state, ErrNotFound): No child with the given ID exists
+//   - (_, state, ErrRunning): Child is already running
+//   - (_, state, error): Child failed to start
+func (s SupervisorS) doRestartChild(self erl.PID, childID string, state supervisorState) (erl.PID, supervisorState, error) {
+	idx, spec, err := state.children.get(childID)
+	if err != nil {
+		return erl.PID{}, state, ErrNotFound
+	}
+
+	// Check if already running
+	if !spec.terminated && !spec.ignored && erl.IsAlive(spec.pid) {
+		return erl.PID{}, state, ErrRunning
+	}
+
+	// Clear flags and restart the child
+	spec.terminated = false
+	spec.ignored = false
+	startedSpec, err := s.startChild(self, spec)
+	if err != nil {
+		// Keep the spec but mark as terminated
+		spec.terminated = true
+		state.children.specs[idx] = spec
+		return erl.PID{}, state, err
+	}
+
+	state.children.specs[idx] = startedSpec
+	return startedSpec.pid, state, nil
+}
+
+// doDeleteChild removes a child specification entirely.
+// Called by HandleCall for deleteChildRequest.
+//
+// The child must not be running. Use TerminateChild first if needed.
+//
+// Returns:
+//   - (state, nil): Child specification was removed
+//   - (state, ErrNotFound): No child with the given ID exists
+//   - (state, ErrRunning): Child is still running
+func (s SupervisorS) doDeleteChild(childID string, state supervisorState) (supervisorState, error) {
+	_, spec, err := state.children.get(childID)
+	if err != nil {
+		return state, ErrNotFound
+	}
+
+	// Cannot delete running child
+	if !spec.terminated && !spec.ignored && erl.IsAlive(spec.pid) {
+		return state, ErrRunning
+	}
+
+	// Remove from children
+	state.children.delete(childID)
+	return state, nil
+}

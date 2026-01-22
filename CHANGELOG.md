@@ -30,6 +30,10 @@
   calling Terminate when the GenServer is not trapping exits.
 
 ### Added
+- Implemented a dynamic child management API for `supervisor`, bringing it
+  closer to feature parity with Erlang/OTP. This includes `StartChild`,
+  `TerminateChild`, `RestartChild`, `DeleteChild`, `WhichChildren`, and
+  `CountChildren`.
 - Add `InitOKTrapExit` helper function to `testserver` package for initializing
   test servers that trap exit signals.
 - Add `SetTerminate` method to `testserver.Config` for registering Terminate
@@ -477,6 +481,7 @@ Updates to `erltest`
 
 - made process.id an atomically incremented int. Gurantees uniqueness
   and is easier to read in the logs. This shouldn't affect users of the pkg.
+
 
 
 
