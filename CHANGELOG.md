@@ -3,6 +3,23 @@
 ## [Unreleased]
 
 ### Changed
+- Rewrote `docs/supervisor.md` with comprehensive coverage of supervisor concepts,
+  restart strategies, restart types, shutdown options, and usage examples including
+  static children, dynamic children via callback, nested supervision trees, and
+  named supervisors.
+- Added extensive Go doc comments throughout the supervisor package:
+  - `api.go`: Expanded documentation for `StartDefaultLink`, `StartLink`, `SetName`,
+    and `LinkOpts` with detailed parameter descriptions, return values, and examples
+  - `child_spec.go`: Documented `ChildSpec` fields, `StartFunSpec` contract,
+    `NewChildSpec`, and all functional options (`SetRestart`, `SetShutdown`, `SetChildType`)
+  - `child_killer.go`: Added internal documentation for the child termination helper
+  - `supervisor.go`: Documented `SupFlagsS`, `SupervisorS`, `InitResult`, `Supervisor`
+    interface, and all GenServer callback implementations with algorithm descriptions
+  - `supervisor_state.go`: Documented internal state management and restart intensity algorithm
+  - `types.go`: Expanded documentation for `Strategy`, `Restart`, `ShutdownOpt`, and
+    `ChildType` constants with usage guidance and example scenarios
+  - `doc.go`: Enhanced package-level documentation with quick start example and
+    comprehensive overview of all supervisor features
 - Clarified documentation for `Terminate` callback in `genserver.GenServer`
   interface and `gensrv.RegisterTerminate` function to accurately describe
   when the terminate handler is invoked:
@@ -460,6 +477,7 @@ Updates to `erltest`
 
 - made process.id an atomically incremented int. Gurantees uniqueness
   and is easier to read in the logs. This shouldn't affect users of the pkg.
+
 
 
 
