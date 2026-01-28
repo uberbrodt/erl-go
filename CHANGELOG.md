@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## v0.20.0
 
 ### Added
 - Implemented a dynamic child management API for `supervisor`, bringing it

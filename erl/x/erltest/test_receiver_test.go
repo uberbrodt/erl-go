@@ -849,7 +849,3 @@ func TestReceiver_WaitOnWaitGroup_TimesOutWhenNotDone(t *testing.T) {
 
 	assert.Assert(t, elapsed < 5*time.Second, "WaitOnWaitGroup should timeout")
 }
-
-
-
-

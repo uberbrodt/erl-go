@@ -754,4 +754,3 @@ func (tr *TestReceiver) appendFailure(f *ExpectationFailure) {
 func (tr *TestReceiver) String() string {
 	return fmt.Sprintf("TestReceiver[%v]", tr.getSelf())
 }
-

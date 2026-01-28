@@ -1091,13 +1091,3 @@ func TestRestForOne_MixedRestartTypes(t *testing.T) {
 	// Supervisor should still be alive
 	assert.Assert(t, erl.IsAlive(supPID))
 }
-
-
-
-
-
-
-
-
-
-

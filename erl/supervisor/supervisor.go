@@ -839,7 +839,3 @@ func (s SupervisorS) doDeleteChild(childID string, state supervisorState) (super
 	state.children.delete(childID)
 	return state, nil
 }
-
-
-
-
