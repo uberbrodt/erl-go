@@ -450,6 +450,63 @@ func TestRestartChild_CanRestartIgnoredChild(t *testing.T) {
 	assert.Equal(t, children[0].Status, ChildRunning)
 }
 
+func TestRestartChild_ReturnsErrorWhenStartFails(t *testing.T) {
+	// Child that starts successfully first, but fails on restart
+	var startCount int
+	startErr := errors.New("simulated start failure")
+
+	sup := TestSup{
+		supFlags: NewSupFlags(),
+		childSpecs: []ChildSpec{
+			NewChildSpec("child1", func(sup erl.PID) (erl.PID, error) {
+				startCount++
+				if startCount == 1 {
+					// First time: start successfully
+					return genserver.StartLink[TestSrvState](sup,
+						genserver.NewTestServer[TestSrvState](), nil,
+						genserver.SetName(supChild1))
+				}
+				// Subsequent times: fail to start
+				return erl.PID{}, startErr
+			}),
+		},
+	}
+
+	supPID, err := testStartSupervisor(t, sup, nil)
+	assert.NilError(t, err)
+
+	// Verify child started successfully
+	children, _ := WhichChildren(supPID)
+	assert.Equal(t, children[0].Status, ChildRunning)
+	originalPID := children[0].PID
+	assert.Assert(t, erl.IsAlive(originalPID))
+
+	// Terminate the child
+	err = TerminateChild(supPID, "child1")
+	assert.NilError(t, err)
+
+	// Verify terminated
+	children, _ = WhichChildren(supPID)
+	assert.Equal(t, children[0].Status, ChildTerminated)
+
+	// Try to restart - should fail
+	returnedPID, err := RestartChild(supPID, "child1")
+	assert.Assert(t, err != nil, "expected error when start fails")
+	assert.ErrorContains(t, err, "simulated start failure")
+
+	// Returned PID should be UndefinedPID (zero value)
+	assert.Equal(t, returnedPID, erl.UndefinedPID)
+
+	// Child should still be marked as terminated (spec preserved)
+	children, _ = WhichChildren(supPID)
+	assert.Equal(t, len(children), 1)
+	assert.Equal(t, children[0].ID, "child1")
+	assert.Equal(t, children[0].Status, ChildTerminated)
+
+	// Supervisor should still be running
+	assert.Assert(t, erl.IsAlive(supPID))
+}
+
 // =============================================================================
 // DeleteChild Tests
 // =============================================================================

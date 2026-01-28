@@ -792,12 +792,12 @@ func (s SupervisorS) doTerminateChild(self erl.PID, childID string, state superv
 func (s SupervisorS) doRestartChild(self erl.PID, childID string, state supervisorState) (erl.PID, supervisorState, error) {
 	idx, spec, err := state.children.get(childID)
 	if err != nil {
-		return erl.PID{}, state, ErrNotFound
+		return erl.UndefinedPID, state, ErrNotFound
 	}
 
 	// Check if already running
 	if !spec.terminated && !spec.ignored && erl.IsAlive(spec.pid) {
-		return erl.PID{}, state, ErrRunning
+		return erl.UndefinedPID, state, ErrRunning
 	}
 
 	// Clear flags and restart the child
@@ -808,7 +808,7 @@ func (s SupervisorS) doRestartChild(self erl.PID, childID string, state supervis
 		// Keep the spec but mark as terminated
 		spec.terminated = true
 		state.children.specs[idx] = spec
-		return erl.PID{}, state, err
+		return erl.UndefinedPID, state, err
 	}
 
 	state.children.specs[idx] = startedSpec
@@ -839,6 +839,7 @@ func (s SupervisorS) doDeleteChild(childID string, state supervisorState) (super
 	state.children.delete(childID)
 	return state, nil
 }
+
 
 
 
