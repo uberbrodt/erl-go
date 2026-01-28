@@ -562,15 +562,26 @@ func (s SupervisorS) startChild(self erl.PID, child ChildSpec) (cs ChildSpec, er
 // Temporary children are removed from the returned list; other children
 // are kept (marked as terminated) for potential restart.
 func (s SupervisorS) stopChildren(self erl.PID, children *childSpecs) (*childSpecs, error) {
-	for _, child := range children.list() {
+	// Take a snapshot of children to iterate over, since we may modify
+	// the children list during iteration (deleting Temporary children).
+	childList := children.list()
+	toDelete := make([]string, 0)
 
+	for _, child := range childList {
 		c, ok := s.terminateChild(self, child)
 		if ok {
 			children.update(c)
 		} else {
-			children.delete(child.ID)
+			// Mark for deletion after iteration completes
+			toDelete = append(toDelete, child.ID)
 		}
 	}
+
+	// Delete temporary children after iteration
+	for _, id := range toDelete {
+		children.delete(id)
+	}
+
 	return children, nil
 }
 
@@ -589,7 +600,10 @@ func (s SupervisorS) terminateChild(self erl.PID, c ChildSpec) (ChildSpec, bool)
 	listen := make(chan childKillerDoneMsg, 1)
 	if erl.IsAlive(c.pid) {
 		erl.DebugPrintf("Supervisor[%v]: stopping child %v", self, c.ID)
-		erl.SpawnLink(self, &childKiller{parent: listen, parentPID: self, child: c})
+		// Use Spawn instead of SpawnLink to avoid sending ExitMsg to supervisor
+		// when childKiller exits. The supervisor already receives completion
+		// notification via the parent channel.
+		erl.Spawn(&childKiller{parent: listen, parentPID: self, child: c})
 	} else {
 		erl.DebugPrintf("Supervisor[%v] child %v is not started, mark as terminated", self, c.ID)
 		listen <- childKillerDoneMsg{err: nil}
@@ -825,3 +839,6 @@ func (s SupervisorS) doDeleteChild(childID string, state supervisorState) (super
 	state.children.delete(childID)
 	return state, nil
 }
+
+
+

@@ -529,6 +529,167 @@ func (tr *TestReceiver) Wait() {
 	}
 }
 
+// WaitOnChannel blocks until the provided channel is closed or receives a value,
+// the test fails, or the receiver timeout is reached.
+//
+// # Why use WaitOnChannel?
+//
+// The standard [Wait] method blocks until all [Expectation] instances are satisfied
+// based on their matcher and call count constraints (e.g., [Times], [MinTimes]).
+// However, when using [AnyTimes] expectations, there is no "satisfied" state to
+// wait for—they are always considered satisfied since their minimum call count is 0.
+//
+// In these cases, test completion must be signaled through side effects rather than
+// expectation satisfaction. WaitOnChannel allows you to use a channel closed from
+// within a [Do] callback to signal when the test should proceed.
+//
+// # Example
+//
+//	done := make(chan struct{})
+//	tr.Expect(initMsg{}, gomock.Any()).AnyTimes().Do(func(arg ExpectArg) {
+//	    msg := arg.Msg.(initMsg)
+//	    if msg.id == "child3" {
+//	        close(done) // signal that we've seen the message we care about
+//	    }
+//	})
+//
+//	// trigger the action that sends messages...
+//	erl.Exit(trPID, childPID, exitreason.Kill)
+//
+//	tr.WaitOnChannel(done) // blocks until done is closed
+//
+// See also: [WaitOnFunc], [WaitOnWaitGroup]
+func (tr *TestReceiver) WaitOnChannel(ch <-chan struct{}) {
+	now := time.Now()
+	tr.t.Logf("%s - [%v] WaitOnChannel: waiting for channel signal", now.Format(time.RFC3339Nano), tr)
+
+	for {
+		select {
+		case <-ch:
+			tr.t.Logf("%s - [%v] WaitOnChannel: channel signaled, returning", time.Now().Format(time.RFC3339Nano), tr)
+			return
+		default:
+			if time.Since(now) > tr.opts.waitExit {
+				tr.t.Errorf("%s - [%v] WaitOnChannel: timed out waiting for channel signal", time.Now().Format(time.RFC3339Nano), tr)
+				return
+			}
+
+			if tr.t.Failed() {
+				tr.t.Logf("%s - [%v] WaitOnChannel: test failed, returning", time.Now().Format(time.RFC3339Nano), tr)
+				return
+			}
+
+			runtime.Gosched()
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+}
+
+// WaitOnFunc blocks until the provided function returns true, the test fails,
+// or the receiver timeout is reached. The function is polled every 10ms.
+//
+// This is useful when test completion depends on external state that can be
+// queried, rather than messages received by the TestReceiver.
+//
+// See [WaitOnChannel] for a detailed explanation of why these methods exist.
+//
+// # Example
+//
+//	tr.Expect(initMsg{}, gomock.Any()).AnyTimes()
+//
+//	// trigger the action that eventually registers a process...
+//	erl.Exit(trPID, childPID, exitreason.Kill)
+//
+//	tr.WaitOnFunc(func() bool {
+//	    _, ok := erl.WhereIs("child1-name")
+//	    return ok // returns true when child1 has been restarted and registered
+//	})
+//
+// See also: [WaitOnChannel], [WaitOnWaitGroup]
+func (tr *TestReceiver) WaitOnFunc(fn func() bool) {
+	now := time.Now()
+	tr.t.Logf("%s - [%v] WaitOnFunc: waiting for function to return true", now.Format(time.RFC3339Nano), tr)
+
+	for {
+		if fn() {
+			tr.t.Logf("%s - [%v] WaitOnFunc: function returned true, returning", time.Now().Format(time.RFC3339Nano), tr)
+			return
+		}
+
+		if time.Since(now) > tr.opts.waitExit {
+			tr.t.Errorf("%s - [%v] WaitOnFunc: timed out waiting for function to return true", time.Now().Format(time.RFC3339Nano), tr)
+			return
+		}
+
+		if tr.t.Failed() {
+			tr.t.Logf("%s - [%v] WaitOnFunc: test failed, returning", time.Now().Format(time.RFC3339Nano), tr)
+			return
+		}
+
+		runtime.Gosched()
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// WaitOnWaitGroup blocks until the provided [sync.WaitGroup] counter reaches zero,
+// the test fails, or the receiver timeout is reached.
+//
+// This is useful when multiple independent signals need to be coordinated before
+// the test can proceed.
+//
+// See [WaitOnChannel] for a detailed explanation of why these methods exist.
+//
+// # Example
+//
+//	var wg sync.WaitGroup
+//	wg.Add(2)
+//
+//	tr.Expect(initMsg{}, gomock.Any()).AnyTimes().Do(func(arg ExpectArg) {
+//	    msg := arg.Msg.(initMsg)
+//	    if msg.id == "child1" || msg.id == "child2" {
+//	        wg.Done()
+//	    }
+//	})
+//
+//	// trigger the action...
+//	erl.Exit(trPID, childPID, exitreason.Kill)
+//
+//	tr.WaitOnWaitGroup(&wg) // blocks until both child1 and child2 have initialized
+//
+// See also: [WaitOnChannel], [WaitOnFunc]
+func (tr *TestReceiver) WaitOnWaitGroup(wg *sync.WaitGroup) {
+	now := time.Now()
+	tr.t.Logf("%s - [%v] WaitOnWaitGroup: waiting for WaitGroup", now.Format(time.RFC3339Nano), tr)
+
+	// Use a channel to convert WaitGroup.Wait() into a selectable operation
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	for {
+		select {
+		case <-done:
+			tr.t.Logf("%s - [%v] WaitOnWaitGroup: WaitGroup done, returning", time.Now().Format(time.RFC3339Nano), tr)
+			return
+		default:
+			if time.Since(now) > tr.opts.waitExit {
+				tr.t.Errorf("%s - [%v] WaitOnWaitGroup: timed out waiting for WaitGroup", time.Now().Format(time.RFC3339Nano), tr)
+				return
+			}
+
+			if tr.t.Failed() {
+				tr.t.Logf("%s - [%v] WaitOnWaitGroup: test failed, returning", time.Now().Format(time.RFC3339Nano), tr)
+				return
+			}
+
+			runtime.Gosched()
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+}
+
 // will cause the test receiver to exit, sending signals to linked and monitoring
 // processes. This is not needed for normal test cleanup (that is handled via [t.Cleanup()])
 func (tr *TestReceiver) Stop() {
@@ -593,3 +754,4 @@ func (tr *TestReceiver) appendFailure(f *ExpectationFailure) {
 func (tr *TestReceiver) String() string {
 	return fmt.Sprintf("TestReceiver[%v]", tr.getSelf())
 }
+
