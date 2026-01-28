@@ -408,6 +408,33 @@ func (p *Process) setName(name Name) {
 	p._name = name
 }
 
+// tryRegisterName atomically checks that the process is running and has no name,
+// then sets the name. This prevents a TOCTOU race between Register checking
+// IsAlive and the process exiting before setName is called.
+//
+// Returns nil on success, or a RegistrationError if:
+//   - Process is not running (NoProc)
+//   - Process already has a name (AlreadyRegistered)
+func (p *Process) tryRegisterName(name Name) *RegistrationError {
+	// Lock order: status first, then name (consistent with exit())
+	p.statusMutex.RLock()
+	defer p.statusMutex.RUnlock()
+
+	if p._status != running {
+		return &RegistrationError{Kind: NoProc}
+	}
+
+	p.nameMutex.Lock()
+	defer p.nameMutex.Unlock()
+
+	if p._name != "" {
+		return &RegistrationError{Kind: AlreadyRegistered}
+	}
+
+	p._name = name
+	return nil
+}
+
 func NewProcess(r Runnable) *Process {
 	return &Process{
 		id:              nextProcessID.Add(1),

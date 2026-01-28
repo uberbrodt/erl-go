@@ -62,8 +62,7 @@ test: check-tools
 #@ test-full: runs all tests, including slow and integration tests.
 #################################################################################
 test-full:
-	SLOW=1 gotestsum -f testname -- -run=$(TEST_RUN)  -tags=integration -p 1 -coverprofile cover.out $(TEST_ARG)
-
+	SLOW=1 gotestsum -f testname -- -run=$(TEST_RUN) -p 1 -coverprofile cover.out $(TEST_ARG)
 
 #################################################################################
 #@ coverage-report: writes coverage report to cover.out and opens the webbrowser to the report.
