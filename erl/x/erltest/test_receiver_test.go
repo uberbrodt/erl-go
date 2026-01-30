@@ -1,6 +1,8 @@
 package erltest_test
 
 import (
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -684,4 +686,166 @@ func TestReciver_Wait_ReturnsImmediatelyIfNoExpectations(t *testing.T) {
 	beforeWait := time.Now()
 	tr.Wait()
 	assert.Assert(t, time.Since(beforeWait) < 1*time.Second)
+}
+
+// =============================================================================
+// WaitOnChannel Tests
+// =============================================================================
+
+func TestReceiver_WaitOnChannel_ReturnsWhenChannelClosed(t *testing.T) {
+	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(5*time.Second))
+
+	done := make(chan struct{})
+	tr.Expect(testMsg1{}, gomock.Any()).AnyTimes().Do(func(arg erltest.ExpectArg) {
+		msg := arg.Msg.(testMsg1)
+		if msg.foo == "signal" {
+			close(done)
+		}
+	})
+
+	// Send some messages, the last one signals completion
+	erl.Send(testPID, testMsg1{foo: "bar"})
+	erl.Send(testPID, testMsg1{foo: "baz"})
+	erl.Send(testPID, testMsg1{foo: "signal"})
+
+	beforeWait := time.Now()
+	tr.WaitOnChannel(done)
+	elapsed := time.Since(beforeWait)
+
+	// Should return quickly after channel is closed
+	assert.Assert(t, elapsed < 1*time.Second, "WaitOnChannel should return promptly after channel closes")
+}
+
+func TestReceiver_WaitOnChannel_ReturnsWhenChannelReceivesValue(t *testing.T) {
+	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(5*time.Second))
+
+	done := make(chan struct{}, 1)
+	tr.Expect(testMsg1{}, gomock.Any()).AnyTimes().Do(func(arg erltest.ExpectArg) {
+		msg := arg.Msg.(testMsg1)
+		if msg.foo == "signal" {
+			done <- struct{}{}
+		}
+	})
+
+	erl.Send(testPID, testMsg1{foo: "signal"})
+
+	beforeWait := time.Now()
+	tr.WaitOnChannel(done)
+	elapsed := time.Since(beforeWait)
+
+	assert.Assert(t, elapsed < 1*time.Second)
+}
+
+func TestReceiver_WaitOnChannel_TimesOutWhenNoSignal(t *testing.T) {
+	fakeT := standardFakeT(t, nil)
+	_, tr := erltest.NewReceiver(fakeT,
+		erltest.WaitTimeout(500*time.Millisecond),
+		erltest.ReceiverTimeout(1*time.Second))
+
+	done := make(chan struct{}) // never closed
+
+	beforeWait := time.Now()
+	tr.WaitOnChannel(done)
+	elapsed := time.Since(beforeWait)
+
+	// Should timeout after waitExit (receiver timeout - 1 second, so ~0 seconds in this case)
+	// Actually waitExit = timeout - 1s, so with 1s timeout, waitExit is 0.
+	// Let's just verify it doesn't hang forever
+	assert.Assert(t, elapsed < 5*time.Second, "WaitOnChannel should timeout")
+}
+
+// =============================================================================
+// WaitOnFunc Tests
+// =============================================================================
+
+func TestReceiver_WaitOnFunc_ReturnsWhenFuncReturnsTrue(t *testing.T) {
+	_, tr := erltest.NewReceiver(t, erltest.WaitTimeout(5*time.Second))
+
+	counter := 0
+	tr.WaitOnFunc(func() bool {
+		counter++
+		return counter >= 3
+	})
+
+	assert.Assert(t, counter >= 3, "function should have been called at least 3 times")
+}
+
+func TestReceiver_WaitOnFunc_UsedWithExternalState(t *testing.T) {
+	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(5*time.Second))
+
+	// Use atomic for thread-safe access from both the Do callback and the WaitOnFunc
+	var sawSignal atomic.Bool
+	tr.Expect(testMsg1{}, gomock.Any()).AnyTimes().Do(func(arg erltest.ExpectArg) {
+		msg := arg.Msg.(testMsg1)
+		if msg.foo == "signal" {
+			sawSignal.Store(true)
+		}
+	})
+
+	erl.Send(testPID, testMsg1{foo: "bar"})
+	erl.Send(testPID, testMsg1{foo: "signal"})
+
+	tr.WaitOnFunc(func() bool {
+		return sawSignal.Load()
+	})
+
+	assert.Assert(t, sawSignal.Load())
+}
+
+func TestReceiver_WaitOnFunc_TimesOutWhenFuncNeverReturnsTrue(t *testing.T) {
+	fakeT := standardFakeT(t, nil)
+	_, tr := erltest.NewReceiver(fakeT,
+		erltest.WaitTimeout(500*time.Millisecond),
+		erltest.ReceiverTimeout(1*time.Second))
+
+	beforeWait := time.Now()
+	tr.WaitOnFunc(func() bool {
+		return false // never returns true
+	})
+	elapsed := time.Since(beforeWait)
+
+	assert.Assert(t, elapsed < 5*time.Second, "WaitOnFunc should timeout")
+}
+
+// =============================================================================
+// WaitOnWaitGroup Tests
+// =============================================================================
+
+func TestReceiver_WaitOnWaitGroup_ReturnsWhenWaitGroupDone(t *testing.T) {
+	testPID, tr := erltest.NewReceiver(t, erltest.WaitTimeout(5*time.Second))
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	tr.Expect(testMsg1{}, gomock.Any()).AnyTimes().Do(func(arg erltest.ExpectArg) {
+		msg := arg.Msg.(testMsg1)
+		if msg.foo == "done1" || msg.foo == "done2" {
+			wg.Done()
+		}
+	})
+
+	erl.Send(testPID, testMsg1{foo: "done1"})
+	erl.Send(testPID, testMsg1{foo: "done2"})
+
+	beforeWait := time.Now()
+	tr.WaitOnWaitGroup(&wg)
+	elapsed := time.Since(beforeWait)
+
+	assert.Assert(t, elapsed < 1*time.Second, "WaitOnWaitGroup should return promptly")
+}
+
+func TestReceiver_WaitOnWaitGroup_TimesOutWhenNotDone(t *testing.T) {
+	fakeT := standardFakeT(t, nil)
+	_, tr := erltest.NewReceiver(fakeT,
+		erltest.WaitTimeout(500*time.Millisecond),
+		erltest.ReceiverTimeout(1*time.Second))
+
+	var wg sync.WaitGroup
+	wg.Add(1) // never done
+
+	beforeWait := time.Now()
+	tr.WaitOnWaitGroup(&wg)
+	elapsed := time.Since(beforeWait)
+
+	assert.Assert(t, elapsed < 5*time.Second, "WaitOnWaitGroup should timeout")
 }

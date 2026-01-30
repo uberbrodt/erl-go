@@ -25,7 +25,7 @@ the `Process` interface).
 While it's preferable to communicate asynchronously, a synchronous abstraction
 is useful. This is where the `genserver.Call` primitive comes into play. By
 using a configurable timeout (and gen_caller under the hood), we can make a
-synchrous call that will be non-blocking.
+synchrous call that is synchronous but will unblock once the timeout is reached.
 
 
 ## Development Commands
@@ -43,9 +43,6 @@ make test TEST_ARG=./erl/supervisor
 
 # Run tests with different timeout (default 2m)
 make test TIMEOUT=5m
-
-# Run full test suite including slow/integration tests
-make test-full
 
 # Watch mode - rerun tests on file changes
 make test-watch
@@ -108,6 +105,13 @@ This is enforced by `./scripts/check-test-build-tags` in CI.
 
 ### GenServer
 
+A GenServer should be understood as a "Generic Server". It receives messages
+sent to it asynchronously (Cast) or synchronously (Call), and replies to them in
+order of receipt. It also handles "Message Signals" (`erl.Send` messages) from
+other processes via `HandleInfo` callbacks. This flexible pattern and tight
+integration with `Supervisors` makes them the default building block for many
+higher order parts of the system.
+
 Two implementations exist:
 
 1. **genserver** (erl/genserver/) - Lower-level, requires implementing the `GenServer[State]` interface with all callbacks (Init, HandleCall, HandleCast, HandleInfo, HandleContinue, Terminate)
@@ -120,7 +124,8 @@ Two implementations exist:
    - `RegisterContinue[State, Msg](matchType, handler)` - Deferred processing
    - `RegisterTerminate[State](handler)` - Cleanup on exit
 
-Use `gensrv` for simpler servers with message-specific handlers. Use `genserver` when you need full control over the callback interface.
+Use `gensrv` to organize servers with message-specific handlers. Use `genserver` when you need full control over the callback interface and want to remove any possible overhead from the `gensrv` implementation.
+
 
 ### Supervisor
 

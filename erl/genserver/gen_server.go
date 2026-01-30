@@ -32,40 +32,122 @@ type initAck struct {
 	err    error
 }
 
+// stopRequest is an internal message sent by genStopper to request graceful termination.
+// This triggers the Terminate callback before the process exits.
+type stopRequest struct {
+	reason *exitreason.S
+}
+
 type (
+	// InitResult is returned from the Init callback to provide the initial state
+	// and an optional continuation term.
+	//
+	// Fields:
+	//   - State: The initial server state
+	//   - Continue: If non-nil, triggers [GenServer.HandleContinue] before processing messages
 	InitResult[STATE any] struct {
 		State    STATE
 		Continue any
 	}
+
+	// CallResult is returned from HandleCall to provide the reply, updated state,
+	// and control flow options.
+	//
+	// Fields:
+	//   - NoReply: If true, no reply is sent; use [Reply] to respond later
+	//   - Msg: The reply to send to the caller (ignored if NoReply is true)
+	//   - State: The updated server state
+	//   - Continue: If non-nil, triggers [GenServer.HandleContinue] after the reply is sent
+	//
+	// Note: When Continue is set, the reply is sent to the caller before HandleContinue
+	// runs, allowing the caller to unblock while post-processing occurs.
 	CallResult[STATE any] struct {
-		// if true, then no reply will be sent to the caller. The genserver should reply with [genserver.Reply]
+		// if true, then no reply will be sent to the caller. The genserver should reply with [Reply]
 		// at a later time, otherwise the caller will time out.
 		NoReply bool
 		// The reply that will be sent to the caller
 		Msg any
 		// The updated state of the GenServer
 		State STATE
-		// if not nil, will call [HandleContinue] immmediately after [HandleCall] returns with this as the [continuation]
+		// if not nil, will call [GenServer.HandleContinue] immediately after [GenServer.HandleCall] returns with this as the continuation
 		Continue any
 	}
+
+	// CastResult is returned from HandleCast to provide the updated state
+	// and an optional continuation term.
+	//
+	// Fields:
+	//   - State: The updated server state
+	//   - Continue: If non-nil, triggers [GenServer.HandleContinue] after HandleCast returns
 	CastResult[STATE any] struct {
 		State    STATE
 		Continue any
 	}
+
+	// InfoResult is returned from HandleInfo to provide the updated state
+	// and an optional continuation term.
+	//
+	// Fields:
+	//   - State: The updated server state
+	//   - Continue: If non-nil, triggers [GenServer.HandleContinue] after HandleInfo returns
 	InfoResult[STATE any] struct {
 		State    STATE
 		Continue any
 	}
 )
 
+// GenServer is the interface that must be implemented to create a GenServer process.
+//
+// This is equivalent to implementing the gen_server behavior callbacks in Erlang/OTP.
+// All callbacks are invoked within the GenServer's process context.
 type GenServer[STATE any] interface {
+	// Init initializes the server state when the process starts.
+	// This is equivalent to Erlang's init/1 callback.
 	Init(self erl.PID, args any) (InitResult[STATE], error)
+
+	// HandleCall processes synchronous requests sent via [Call].
+	// This is equivalent to Erlang's handle_call/3 callback.
 	HandleCall(self erl.PID, request any, from From, state STATE) (CallResult[STATE], error)
+
+	// HandleCast processes asynchronous messages sent via [Cast].
+	// This is equivalent to Erlang's handle_cast/2 callback.
 	HandleCast(self erl.PID, request any, state STATE) (CastResult[STATE], error)
+
+	// HandleInfo processes messages sent directly to the process inbox via [erl.Send],
+	// as well as system messages like [erl.DownMsg] and [erl.ExitMsg].
+	// This is equivalent to Erlang's handle_info/2 callback.
 	HandleInfo(self erl.PID, msg any, state STATE) (InfoResult[STATE], error)
-	// Handles Continuation terms from other callbacks. Set the [continueTerm] to re-enter the [HandleContinue]
-	// callback with a new state
+
+	// HandleContinue processes continuation terms returned by other callbacks.
+	// This is equivalent to Erlang's handle_continue/2 callback.
+	//
+	// Continuations are useful for:
+	//   - Returning from Init quickly (unblocking [StartLink]) while performing
+	//     additional setup work before processing messages
+	//   - Returning a Call reply to the caller before doing post-processing work
+	//   - Implementing state machines with explicit transitions
+	//   - Code reuse when the same logic applies to multiple handler types
+	//
+	// The continuation is processed immediately after the triggering callback completes,
+	// before any new messages from the inbox. Returning a non-nil continueTerm will
+	// chain into another HandleContinue call.
 	HandleContinue(self erl.PID, continuation any, state STATE) (newState STATE, continueTerm any, err error)
+
+	// Terminate is called when the server is about to exit.
+	// This is equivalent to Erlang's terminate/2 callback.
+	//
+	// Terminate is invoked in the following scenarios:
+	//   1. When [Stop] is called on the GenServer process
+	//   2. When any callback (HandleCall, HandleCast, HandleInfo, HandleContinue)
+	//      panics or returns an error
+	//   3. When the GenServer is trapping exits (via [erl.ProcessFlag] with [erl.TrapExit])
+	//      and receives an [erl.ExitMsg] from its parent process or supervisor
+	//
+	// Note: If the GenServer is NOT trapping exits, exit signals from linked processes
+	// cause immediate termination without calling Terminate.
+	//
+	// Terminate cannot prevent the server from exiting. Use it for cleanup tasks like
+	// closing connections, releasing resources, or persisting state.
 	Terminate(self erl.PID, reason error, state STATE)
 }
 
@@ -143,6 +225,10 @@ func (gs *GenServerS[STATE]) Receive(self erl.PID, inbox <-chan any) error {
 			if err := gs.handleCastRequest(self, msgT); err != nil {
 				return err
 			}
+		case stopRequest:
+			erl.DebugPrintf("GenServer[%v] received stopRequest with reason %v", self, msgT.reason)
+			gs.callback.Terminate(self, msgT.reason, gs.state)
+			return msgT.reason
 		case erl.ExitMsg:
 			erl.DebugPrintf("GenServer[%v] got ExitMsg with reason %s from process %+v", self, msgT.Reason, msgT.Proc)
 			if msgT.Proc.Equals(gs.parent) {
@@ -165,28 +251,37 @@ func (gs *GenServerS[STATE]) Receive(self erl.PID, inbox <-chan any) error {
 	}
 }
 
+// panicToException converts a recovered panic value to an exitreason.Exception error.
+func panicToException(r any) error {
+	e, ok := r.(error)
+	if !ok {
+		return exitreason.Exception(fmt.Errorf("panic: %v", r))
+	}
+	if !exitreason.IsException(e) {
+		return exitreason.Exception(e)
+	}
+	return e
+}
+
 func (gs *GenServerS[STATE]) handleInit(self erl.PID, msg any) (result InitResult[STATE], err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			e, ok := r.(error)
-			if !ok {
-				err = exitreason.Exception(fmt.Errorf("panic in init: %v", r))
-			} else {
-				if !exitreason.IsException(e) {
-					err = exitreason.Exception(e)
-				} else {
-					err = e
-				}
-			}
-
+			err = panicToException(r)
 		}
 	}()
 	result, err = gs.callback.Init(self, gs.args)
 	return result, err
 }
 
-func (gs *GenServerS[STATE]) doContinue(self erl.PID, inCont any, inState STATE) (STATE, error) {
-	s := inState
+func (gs *GenServerS[STATE]) doContinue(self erl.PID, inCont any, inState STATE) (s STATE, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = panicToException(r)
+			gs.callback.Terminate(self, err, gs.state)
+		}
+	}()
+
+	s = inState
 	cont := inCont
 	var contErr error
 
@@ -204,7 +299,14 @@ func (gs *GenServerS[STATE]) doContinue(self erl.PID, inCont any, inState STATE)
 	return s, nil
 }
 
-func (gs *GenServerS[STATE]) handleInfoRequest(self erl.PID, msg any) error {
+func (gs *GenServerS[STATE]) handleInfoRequest(self erl.PID, msg any) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = panicToException(r)
+			gs.callback.Terminate(self, err, gs.state)
+		}
+	}()
+
 	result, err := gs.callback.HandleInfo(self, msg, gs.state)
 	gs.state = result.State
 
@@ -223,7 +325,15 @@ func (gs *GenServerS[STATE]) handleInfoRequest(self erl.PID, msg any) error {
 	return nil
 }
 
-func (gs *GenServerS[STATE]) handleCallRequest(self erl.PID, msg CallRequest) (bool, error) {
+func (gs *GenServerS[STATE]) handleCallRequest(self erl.PID, msg CallRequest) (stop bool, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = panicToException(r)
+			gs.callback.Terminate(self, err, gs.state)
+			stop = true
+		}
+	}()
+
 	result, err := gs.callback.HandleCall(self, msg.Msg, msg.From, gs.state)
 
 	switch {
@@ -255,7 +365,14 @@ func (gs *GenServerS[STATE]) handleCallRequest(self erl.PID, msg CallRequest) (b
 	return false, nil
 }
 
-func (gs *GenServerS[STATE]) handleCastRequest(self erl.PID, msg CastRequest) error {
+func (gs *GenServerS[STATE]) handleCastRequest(self erl.PID, msg CastRequest) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = panicToException(r)
+			gs.callback.Terminate(self, err, gs.state)
+		}
+	}()
+
 	result, err := gs.callback.HandleCast(self, msg.Msg, gs.state)
 	if err != nil {
 		err = exitreason.Wrap(err)

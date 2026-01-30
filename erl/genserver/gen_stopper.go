@@ -1,13 +1,16 @@
 package genserver
 
 import (
+	"errors"
 	"time"
 
 	"github.com/uberbrodt/erl-go/erl"
 	"github.com/uberbrodt/erl-go/erl/exitreason"
 )
 
-// gencaller returns reply from genserver process or times out
+// genStopper handles graceful GenServer shutdown for the Stop function.
+// It monitors the target GenServer and sends either a stopRequest (for graceful
+// shutdown with Terminate callback) or an exit signal (for Kill).
 type genStopper struct {
 	caller     erl.PID
 	out        chan *exitreason.S
@@ -18,12 +21,17 @@ type genStopper struct {
 
 func (gc *genStopper) Receive(self erl.PID, inbox <-chan any) error {
 	erl.DebugPrintf("genStopper[%v]: preparing to stop %v", self, gc.gensrv)
-	// monitor the genserver so we can exit if it crashes
+	// monitor the genserver so we can detect when it exits
 	ref := erl.Monitor(self, gc.gensrv)
 
-	// This is kind of a hack. We need to simulate a parent process calling Exit(child),
-	// in order for GenServers to exit and call HandleTerminate
-	erl.Exit(gc.caller, gc.gensrv, gc.exitReason)
+	// exitreason.Kill bypasses the Terminate callback (Erlang behavior),
+	// so we use a direct exit signal. For all other reasons, we send
+	// a stopRequest message that triggers the Terminate callback.
+	if errors.Is(gc.exitReason, exitreason.Kill) {
+		erl.Exit(gc.caller, gc.gensrv, gc.exitReason)
+	} else {
+		erl.Send(gc.gensrv, stopRequest{reason: gc.exitReason})
+	}
 
 	for {
 		select {

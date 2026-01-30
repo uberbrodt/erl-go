@@ -1,10 +1,98 @@
 # Changelog
 
-## 0.19.2
+## v0.20.0
 
-### 2026-01-18
-- Added tests for panic recovery genserver.
+### Added
+- Implemented a dynamic child management API for `supervisor`, bringing it
+  closer to feature parity with Erlang/OTP. This includes `StartChild`,
+  `TerminateChild`, `RestartChild`, `DeleteChild`, `WhichChildren`, and
+  `CountChildren`.
+- Add `InitOKTrapExit` helper function to `testserver` package for initializing
+  test servers that trap exit signals.
+- Add `SetTerminate` method to `testserver.Config` for registering Terminate
+  handlers in test GenServers.
+- Add `AddContinueHandler` method to `testserver.Config` for registering
+  HandleContinue handlers in test GenServers.
+- Add `bin/test-loop.sh` script for continuous test execution with logging.
+- Add comprehensive documentation to the supervisor package including
+- Add comprehensive API documentation to genserver and gensrv packages:
+  - Document all `GenServer` interface methods (`Init`, `HandleCall`, `HandleCast`,
+    `HandleInfo`, `HandleContinue`, `Terminate`) with usage guidance
+  - Document result types (`InitResult`, `CallResult`, `CastResult`, `InfoResult`)
+    with field descriptions
+  - Expand gensrv `doc.go` with complete usage examples covering continuations,
+    panic recovery, error handling, and the `From` parameter for deferred replies
+  - Add detailed documentation to all gensrv `Register*` functions, `Start*`
+    functions, and public types (`CastHandle`, `CallHandle`, `GenSrvOpt`)
+- Add `WaitOnChannel`, `WaitOnFunc`, and `WaitOnWaitGroup` methods to
+  `erltest.TestReceiver` for synchronizing tests that use `AnyTimes()`
+  expectations. These methods allow tests to block until an external signal
+  (channel close, function returning true, or WaitGroup completion) rather
+  than relying on expectation satisfaction which doesn't work with AnyTimes.
+- Add comprehensive test suite for supervisor restart strategies (`OneForOne`,
+  `OneForAll`, `RestForOne`) and restart types (`Permanent`, `Transient`,
+  `Temporary`) in `erl/supervisor/restart_strategies_test.go`. Tests cover:
+  - Strategy-specific restart behavior (which children restart when one fails)
+  - Restart type behavior (always, on abnormal exit only, or never)
+  - Restart intensity limits and period-based counter reset
+  - Mixed restart types within different strategies
+
+### Changed
+- Refactored `application` package to use `gensrv` instead of manual Runnable
+  implementation. The application GenServer now uses proper message handlers
+  (`RegisterInit`, `RegisterInfo`, `RegisterTerminate`) for cleaner separation
+  of concerns and proper lifecycle management. The `App.Stopped()` method now
+  also checks if the underlying process is alive.
+- Improved test reliability in `TestRegisteredCount_ReturnsCorrectCount` by using
+  relative count comparisons and adding proper cleanup.
+- Added tests for panic recovery in genserver callbacks.
+- Refactored panic recovery logic into shared `panicToException` helper function.
 - Updated docs
+- Rewrote `docs/supervisor.md` with comprehensive coverage of supervisor concepts,
+  restart strategies, restart types, shutdown options, and usage examples including
+  static children, dynamic children via callback, nested supervision trees, and
+  named supervisors.
+- Added extensive Go doc comments throughout the supervisor package:
+  - `api.go`: Expanded documentation for `StartDefaultLink`, `StartLink`, `SetName`,
+    and `LinkOpts` with detailed parameter descriptions, return values, and examples
+  - `child_spec.go`: Documented `ChildSpec` fields, `StartFunSpec` contract,
+    `NewChildSpec`, and all functional options (`SetRestart`, `SetShutdown`, `SetChildType`)
+  - `child_killer.go`: Added internal documentation for the child termination helper
+  - `supervisor.go`: Documented `SupFlagsS`, `SupervisorS`, `InitResult`, `Supervisor`
+    interface, and all GenServer callback implementations with algorithm descriptions
+  - `supervisor_state.go`: Documented internal state management and restart intensity algorithm
+  - `types.go`: Expanded documentation for `Strategy`, `Restart`, `ShutdownOpt`, and
+    `ChildType` constants with usage guidance and example scenarios
+  - `doc.go`: Enhanced package-level documentation with quick start example and
+    comprehensive overview of all supervisor features
+- Clarified documentation for `Terminate` callback in `genserver.GenServer`
+  interface and `gensrv.RegisterTerminate` function to accurately describe
+  when the terminate handler is invoked:
+  - On `Stop()` calls
+  - On callback panics or errors
+  - On exit signals when trapping exits (via `erl.ProcessFlag` with `erl.TrapExit`)
+- Updated docs to note that exit signals cause immediate termination WITHOUT
+  calling Terminate when the GenServer is not trapping exits.
+
+### Fixed
+- Fixed TOCTOU race condition in `Register` where a process could exit between
+  the `IsAlive` check and `setName` call, leaving stale entries in the registry.
+  Registration now atomically verifies process status and sets the name.
+- Fixed `genserver.Stop` not invoking the `Terminate` callback. The stop
+  mechanism now sends an internal `stopRequest` message that triggers the
+  `Terminate` callback before exiting, matching Erlang GenServer semantics.
+  `exitreason.Kill` still bypasses `Terminate` per Erlang behavior.
+- Fixed `Terminate` callback not being called when `HandleCall`, `HandleCast`,
+  `HandleInfo`, or `HandleContinue` panics. Panic recovery now invokes
+  `Terminate` before the process exits, matching Erlang GenServer semantics.
+- Fixed supervisor `stopChildren` modifying the children map while iterating
+  over it, which could cause unpredictable behavior. Temporary children are
+  now collected and deleted after iteration completes.
+- Fixed supervisor `childKiller` using `SpawnLink` which would send an
+  unnecessary `ExitMsg` to the supervisor when the killer exited. Changed to
+  `Spawn` since completion is already signaled via channel.
+
+
 
 ## 0.19.1 2025-3-11
 
@@ -409,3 +497,15 @@ Updates to `erltest`
 
 - made process.id an atomically incremented int. Gurantees uniqueness
   and is easier to read in the logs. This shouldn't affect users of the pkg.
+
+
+
+
+
+
+
+
+
+
+
+
