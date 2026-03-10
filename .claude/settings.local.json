@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make test:*)",
+      "Bash(make test-full:*)",
+      "Bash(grep:*)",
+      "Bash(make format:*)",
+      "Bash(make build:*)",
+      "Bash(go doc:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(git remote:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr create:*)",
+      "Bash(go build:*)",
+      "Bash(go test:*)",
+      "Bash(make check:*)",
+      "Bash(for test in TestTerminate_CalledOnHandleCastError TestTerminate_CalledOnHandleInfoError)",
+      "Bash(do)",
+      "Bash(echo:*)",
+      "Bash(done)",
+      "Bash(SLOW=1 gotestsum:*)",
+      "Bash(ERL_DEBUG=1 go test:*)"
+    ]
+  }
+}
