@@ -202,38 +202,3 @@ type defaultDynSup struct {
 func (d defaultDynSup) Init(self erl.PID, args any) InitResult {
 	return InitResult{SupFlags: d.flags}
 }
-
-// dynSupServer is the GenServer implementation for the dynamic supervisor.
-// Stub methods satisfy the genserver.GenServer interface; full implementation in task 3.x.
-type dynSupServer struct {
-	callback DynamicSupervisor
-}
-
-// dynSupState holds the dynamic supervisor's internal state.
-// Full fields will be added in task 3.x.
-type dynSupState struct{}
-
-// Interface compliance check.
-var _ genserver.GenServer[dynSupState] = dynSupServer{}
-
-func (s dynSupServer) Init(self erl.PID, args any) (genserver.InitResult[dynSupState], error) {
-	panic("dynsup: Init not yet implemented")
-}
-
-func (s dynSupServer) HandleCall(self erl.PID, request any, from genserver.From, state dynSupState) (genserver.CallResult[dynSupState], error) {
-	panic("dynsup: HandleCall not yet implemented")
-}
-
-func (s dynSupServer) HandleCast(self erl.PID, request any, state dynSupState) (genserver.CastResult[dynSupState], error) {
-	return genserver.CastResult[dynSupState]{State: state}, nil
-}
-
-func (s dynSupServer) HandleInfo(self erl.PID, msg any, state dynSupState) (genserver.InfoResult[dynSupState], error) {
-	panic("dynsup: HandleInfo not yet implemented")
-}
-
-func (s dynSupServer) HandleContinue(self erl.PID, continuation any, state dynSupState) (dynSupState, any, error) {
-	return state, nil, nil
-}
-
-func (s dynSupServer) Terminate(self erl.PID, reason error, state dynSupState) {}
