@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "server",
+  "dolt_database": "erl_go",
+  "project_id": "b9e063df-493d-43e9-a884-0792efc17860"
+}
