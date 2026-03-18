@@ -129,7 +129,7 @@ func (ck *childKiller) handleTimeout(self erl.PID, inbox <-chan any) {
 				erl.DebugPrintf("childkiller[%s]: got a messsage that wasn't erl.DownMsg: %+v", ck.child.ID, msg)
 
 			}
-		case <-time.After(chronos.Dur(fmt.Sprintf("%ds", ck.child.Shutdown.Timeout))):
+		case <-time.After(chronos.Dur(fmt.Sprintf("%dms", ck.child.Shutdown.Timeout))):
 			erl.Exit(ck.parentPID, ck.child.pid, exitreason.Kill)
 			anyMsg := <-inbox
 			switch msg := anyMsg.(type) {

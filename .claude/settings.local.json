@@ -39,5 +39,10 @@
       "Bash(bd ready:*)",
       "Bash(for id:*)"
     ]
+  },
+  "sandbox": {
+    "excludedCommands": [
+      "bd"
+    ]
   }
 }

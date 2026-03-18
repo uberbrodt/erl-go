@@ -298,13 +298,12 @@ func (s dynSupServer) restartChild(self erl.PID, spec supervisor.ChildSpec, stat
 		return genserver.InfoResult[dynSupState]{State: state}, err
 	}
 
-	newPID, newState, startErr := s.doStartChild(self, spec, state)
+	_, newState, startErr := s.doStartChild(self, spec, state)
 	if startErr != nil {
 		// Restart failed — propagate error to terminate supervisor
 		return genserver.InfoResult[dynSupState]{State: newState},
 			fmt.Errorf("DynSup restart failed for child: %w", startErr)
 	}
-	_ = newPID
 
 	return genserver.InfoResult[dynSupState]{State: newState}, nil
 }
@@ -316,7 +315,7 @@ func addRestart(state dynSupState) (dynSupState, error) {
 	period := now.Add(-chronos.Dur(fmt.Sprintf("%ds", state.flags.Period)))
 
 	c := 0
-	trim := 0
+	trim := -1
 	for idx, r := range state.restarts {
 		if r.After(period) {
 			c++
@@ -328,6 +327,8 @@ func addRestart(state dynSupState) (dynSupState, error) {
 			trim = idx
 		}
 	}
-	state.restarts = slices.Delete(state.restarts, 0, trim)
+	if trim >= 0 {
+		state.restarts = slices.Delete(state.restarts, 0, trim+1)
+	}
 	return state, nil
 }
