@@ -76,15 +76,8 @@ make view-docs
 
 `gotest.tools/v3/assert` is the standard assertions framework.
 
-E2E/Integration tests that verify call and cast expectations via a TestReceiver
-should use the `erl/x/erltest` package.
+All tests should use the `erl/x/erltest` package.
 
-
-```go
-//go:build integration
-```
-
-This is enforced by `./scripts/check-test-build-tags` in CI.
 
 ## Architecture
 

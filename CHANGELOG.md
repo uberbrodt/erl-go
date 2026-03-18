@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- Fixed child killer shutdown timeout using seconds (`%ds`) instead of
+  milliseconds (`%dms`), causing the shutdown grace period to be 1000x longer
+  than configured in both `supervisor` and `dynsup` packages.
+- Fixed off-by-one error in `addRestart` restart intensity tracking in both
+  `supervisor` and `dynsup` packages. The trim index was initialized to `0`
+  instead of `-1`, causing the first restart timestamp to always be deleted
+  even when all restarts were within the active period. Also corrected the
+  `slices.Delete` upper bound to be `trim+1` (exclusive end).
+
 ## v0.20.0
 
 ### Added

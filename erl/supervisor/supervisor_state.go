@@ -202,7 +202,7 @@ func (s supervisorState) addRestart() (supervisorState, error) {
 	period := now.Add(-chronos.Dur(fmt.Sprintf("%ds", s.flags.Period)))
 	var err error
 	c := 0
-	trim := 0
+	trim := -1
 	for idx, r := range s.restarts {
 		if r.After(period) {
 			c += 1
@@ -216,6 +216,8 @@ func (s supervisorState) addRestart() (supervisorState, error) {
 			trim = idx
 		}
 	}
-	s.restarts = slices.Delete(s.restarts, 0, trim)
+	if trim >= 0 {
+		s.restarts = slices.Delete(s.restarts, 0, trim+1)
+	}
 	return s, err
 }
